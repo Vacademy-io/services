@@ -15,7 +15,10 @@ import { MyButton } from '@/components/design-system/button';
 import { MultiSelect } from '@/components/design-system/multi-select';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { cn } from '@/lib/utils';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     expectedLayoutHelp,
@@ -70,6 +73,7 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
 
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const chapterTerm = getTerminology(ContentTerms.Chapter, SystemTerms.Chapter);
+    const chapterTermPlural = getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter);
     const subjectTerm = getTerminology(ContentTerms.Subject, SystemTerms.Subject);
     const moduleTerm = getTerminology(ContentTerms.Module, SystemTerms.Module);
     const layoutLines =
@@ -92,6 +96,7 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
             subject: subjectTerm,
             module: moduleTerm,
             chapter: chapterTerm,
+            chapterPlural: chapterTermPlural,
         };
         setDownloadingTemplate(true);
         try {
@@ -162,6 +167,21 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
                 <Switch
                     checked={options.skipDuplicateTitles}
                     onCheckedChange={(checked) => setOptions({ skipDuplicateTitles: checked })}
+                />
+            </label>
+            <label className="flex items-center justify-between gap-4">
+                <span className="flex flex-col">
+                    <span className="text-subtitle text-neutral-700">
+                        Create missing {chapterTermPlural.toLowerCase()}
+                    </span>
+                    <span className="text-caption text-neutral-500">
+                        Off = folders that don’t match an existing {chapterTerm.toLowerCase()} are
+                        skipped
+                    </span>
+                </span>
+                <Switch
+                    checked={options.createMissing}
+                    onCheckedChange={(checked) => setOptions({ createMissing: checked })}
                 />
             </label>
         </div>
