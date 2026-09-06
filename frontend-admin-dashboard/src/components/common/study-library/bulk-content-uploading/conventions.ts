@@ -9,6 +9,10 @@ export const MAX_FILE_COUNT = 2000;
 export const WARN_FILE_COUNT = 500;
 export const MAX_SINGLE_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
 export const MAX_PPTX_BYTES = 20 * 1024 * 1024; // server-side conversion multipart limit
+// admin_core_service spring.servlet.multipart.max-file-size on stage/prod. The
+// SCORM package is posted whole, so anything larger is rejected server-side —
+// catch it here instead of after a long upload.
+export const MAX_SCORM_BYTES = 150 * 1024 * 1024;
 
 export const DEFAULT_ENTITY_NAME = 'DEFAULT';
 
@@ -66,6 +70,13 @@ export const detectKind = (fileName: string): DetectedKind => {
     if (ext === 'ppt' || ext === 'pptx') return 'PPT';
     if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return 'IMAGE';
     if (['mp4', 'mov', 'mkv', 'webm'].includes(ext)) return 'VIDEO_FILE';
+    // A nested .zip means a SCORM package — that is the only zip-shaped content
+    // the library supports. It is NOT validated here: peeking for imsmanifest.xml
+    // would mean decompressing the whole package during preview (they run to
+    // hundreds of MB). The SCORM service unzips and parses it on upload and
+    // rejects non-SCORM zips, so a wrong zip fails that one item with a real
+    // message instead of costing every preview a full extraction.
+    if (ext === 'zip') return 'SCORM';
     return null;
 };
 
@@ -549,6 +560,14 @@ export const buildTree = async ({
                     level: 'error',
                     path: relativePath,
                     message: `PowerPoint file is ${formatBytes(file.entry.uncompressedSize)} — the conversion service accepts up to ${formatBytes(MAX_PPTX_BYTES)}. Convert it to PDF and re-zip.`,
+                });
+                continue;
+            }
+            if (kind === 'SCORM' && file.entry.uncompressedSize > MAX_SCORM_BYTES) {
+                issues.push({
+                    level: 'error',
+                    path: relativePath,
+                    message: `SCORM package is ${formatBytes(file.entry.uncompressedSize)} — the upload accepts up to ${formatBytes(MAX_SCORM_BYTES)}. Add it from the chapter's Add SCORM option instead.`,
                 });
                 continue;
             }
