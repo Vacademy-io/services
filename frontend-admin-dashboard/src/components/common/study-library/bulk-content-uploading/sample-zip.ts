@@ -24,6 +24,8 @@ export interface HierarchyTermLabels {
     subject: string;
     module: string;
     chapter: string;
+    /** Institute's plural for chapter — naive +"s" breaks terms like "Class". */
+    chapterPlural: string;
 }
 
 export interface MultiTemplateOptions {
@@ -66,7 +68,8 @@ const readmeText = (terms: HierarchyTermLabels, multiCourse: boolean): string =>
             : ['4. Zip these folders (not a parent folder around them) and upload.']),
         '',
         `Limits: zip up to ${formatBytes(MAX_ZIP_BYTES)}, ${formatBytes(MAX_SINGLE_FILE_BYTES)} per file, ${MAX_FILE_COUNT} files per zip.`,
-        `Folders must match your EXISTING structure — to add a new ${terms.chapter.toLowerCase()}, create it in the dashboard first, then re-download this template.`,
+        `Folders that don't exist yet are created for you — just add a new folder and re-zip.`,
+        `(Turn off "Create missing ${terms.chapterPlural.toLowerCase()}" in Options to upload only into folders that already exist.)`,
         'This README is ignored by the uploader — you can leave it in the zip.',
     ].join('\n');
 
