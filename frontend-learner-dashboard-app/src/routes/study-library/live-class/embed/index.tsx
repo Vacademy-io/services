@@ -643,17 +643,19 @@ function EmbedComponent() {
           </h1>
           {/* A recording dot rather than the word "Live". These classes are a
               scheduled playback, not a broadcast, and "LIVE" alongside YouTube's
-              own chrome read as a claim the class could not keep. The dot is
-              shrink-0 so the title truncates against it instead of squashing it. */}
+              own chrome read as a claim the class could not keep. The dot carries
+              the meaning on its own — the "REC" label beside it was redundant next
+              to YouTube's own chrome. The accessible name is kept on the wrapper so
+              screen readers still announce it. The dot is shrink-0 so the title
+              truncates against it instead of squashing it. */}
           {sessionId ? (
             <span
-              className="flex shrink-0 items-center gap-2 rounded px-3 py-1 text-sm font-semibold uppercase text-neutral-600 shadow"
+              className="flex shrink-0 items-center rounded px-2 py-1"
               role="status"
               aria-label={t("liveClass.embed.recording")}
               title={t("liveClass.embed.recording")}
             >
               <span className="size-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
-              {t("liveClass.embed.rec")}
             </span>
           ) : (
             <span className="shrink-0 rounded bg-primary-300 px-3 py-1 text-sm font-semibold uppercase text-white shadow">
