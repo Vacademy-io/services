@@ -56,6 +56,7 @@ const readmeText = (terms: HierarchyTermLabels, multiCourse: boolean): string =>
         'BULK CONTENT UPLOAD — HOW TO USE THIS TEMPLATE',
         '',
         '1. Drop your files into the folders below (PDF, Word, PowerPoint, images, videos).',
+        '   A SCORM package goes in as its own .zip — leave it zipped, do not unzip it.',
         `2. A number prefix like "01 Introduction" controls the order and is removed from the name.`,
         `3. YouTube / external links: put a links.txt inside a ${terms.chapter.toLowerCase()} folder,`,
         '   one "Title | URL" per line (see links.example.txt — rename it to links.txt).',

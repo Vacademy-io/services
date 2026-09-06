@@ -1,7 +1,8 @@
 // Bulk Content Uploading — preview tree with match badges and remap dropdowns.
 //
 // Match-only: folders map to EXISTING subjects/modules/chapters or get skipped.
-// Bulk upload never creates new structure (that stays in the course editor).
+// Folders with no existing match are created on commit when "create missing" is
+// on; with it off they must be remapped or skipped before Confirm unlocks.
 
 import { useMemo } from 'react';
 import {
@@ -10,6 +11,7 @@ import {
     Folder,
     Image as ImageIcon,
     LinkSimple,
+    Package,
     PresentationChart,
     Video,
     Warning,
@@ -49,6 +51,8 @@ const kindIcon = (kind: BulkItemKind) => {
             return <ImageIcon className={cls} />;
         case 'VIDEO_FILE':
             return <Video className={cls} />;
+        case 'SCORM':
+            return <Package className={cls} />;
         case 'YOUTUBE':
             return <YoutubeLogo className={cls} />;
         case 'EXTERNAL_LINK':

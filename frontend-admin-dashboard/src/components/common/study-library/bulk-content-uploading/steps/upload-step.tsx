@@ -226,7 +226,8 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
                             <p className="mt-1 text-caption text-neutral-500">
                                 Up to {formatBytes(MAX_ZIP_BYTES)} per zip,{' '}
                                 {formatBytes(MAX_SINGLE_FILE_BYTES)} per file. PDF, Word,
-                                PowerPoint, images, videos and link files are supported.
+                                PowerPoint, images, videos, SCORM packages (.zip) and link files are
+                                supported.
                             </p>
                         </div>
                         <div className="flex items-center gap-1 text-caption text-primary-500">

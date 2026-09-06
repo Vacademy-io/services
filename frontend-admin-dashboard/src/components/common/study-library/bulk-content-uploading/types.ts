@@ -9,6 +9,7 @@ export type BulkItemKind =
     | 'PPT'
     | 'IMAGE'
     | 'VIDEO_FILE'
+    | 'SCORM'
     | 'YOUTUBE'
     | 'EXTERNAL_LINK';
 
