@@ -120,7 +120,13 @@ async function fetchEnrollInvites(instituteId: string): Promise<EntityOption[]> 
     }
 }
 
-function useEntityOptions(eventAppliedType: string, instituteId: string) {
+/**
+ * Options for one applied-type, shared by the picker and by every read-only surface that
+ * needs to turn stored entity ids back into names (the trigger summary, the trigger node
+ * panel). Exported so those surfaces resolve labels from the SAME source the picker offers
+ * -- a second lookup path would be one more place for ids to leak into the UI.
+ */
+export function useEntityOptions(eventAppliedType: string, instituteId: string) {
     return useQuery({
         queryKey: ['workflow-entity-picker', eventAppliedType, instituteId],
         queryFn: async (): Promise<EntityOption[]> => {
@@ -288,4 +294,22 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, multiValu
             </p>
         </div>
     );
+}
+
+/**
+ * Resolve stored trigger entity ids to display labels. Falls back to the raw id when the
+ * entity list hasn't loaded or the id no longer exists (a deleted audience must still be
+ * visible as something, not silently vanish from the summary).
+ */
+export function useEntityLabels(
+    eventAppliedType: string | undefined,
+    ids: string[],
+    instituteId: string
+): { labels: Array<{ id: string; label: string; resolved: boolean }>; isLoading: boolean } {
+    const { data: options = [], isLoading } = useEntityOptions(eventAppliedType ?? '', instituteId);
+    const labels = ids.map((id) => {
+        const match = options.find((o) => o.id === id);
+        return { id, label: match?.label ?? id, resolved: !!match };
+    });
+    return { labels, isLoading };
 }

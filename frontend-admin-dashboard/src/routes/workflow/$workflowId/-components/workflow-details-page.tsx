@@ -14,7 +14,8 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Badge } from '@/components/ui/badge';
 import { WorkflowStatusBadge } from '@/routes/workflow/-components/workflow-status-badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Calendar, Clock } from '@phosphor-icons/react';
+import { Calendar, Clock, Lightning } from '@phosphor-icons/react';
+import { AutomationDiagram } from '@/types/workflow/workflow-types';
 import { formatDistanceToNow } from 'date-fns';
 import {
     AlertDialog,
@@ -194,6 +195,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                     {formatWorkflowType(workflow.workflow_type)}
                                 </Badge>
                             </div>
+                            <TriggerHeadline diagram={diagram} />
                             <div className="flex items-center gap-2 text-sm text-neutral-500">
                                 <Calendar size={16} weight="duotone" />
                                 <span>Created {formatDate(workflow.created_at)}</span>
@@ -384,6 +386,40 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                     )}
                 </TabsContent>
             </Tabs>
+        </div>
+    );
+}
+
+/**
+ * "Event Driven" alone never told anyone what a workflow listens for. The diagram endpoint
+ * already resolves the trigger's event and the entities it is scoped to, and this page
+ * already loads it — so the headline can answer "what starts this, and for whom?" without
+ * making the admin open a node dialog or a second request.
+ */
+function TriggerHeadline({ diagram }: { diagram?: AutomationDiagram }) {
+    const triggerNode = diagram?.nodes?.find((n) => n.type === 'TRIGGER');
+    const details = triggerNode?.details as Record<string, unknown> | undefined;
+    if (!details) return null;
+
+    const firesOn = details['Fires on'] ?? details['Runs on a schedule'];
+    const scopeKey = Object.keys(details).find((k) => k.startsWith('Scope'));
+    const scope = scopeKey ? details[scopeKey] : undefined;
+    const scopeText = Array.isArray(scope) ? scope.join(', ') : scope ? String(scope) : undefined;
+
+    if (!firesOn) return null;
+    return (
+        <div className="flex items-center gap-2 text-sm">
+            <Lightning size={16} weight="duotone" className="text-amber-500" />
+            <span className="text-neutral-500">Fires on</span>
+            <span className="font-medium text-neutral-700">{String(firesOn)}</span>
+            {scopeText && (
+                <>
+                    <span className="text-neutral-400">for</span>
+                    <span className="font-medium text-neutral-700" title={scopeText}>
+                        {scopeText}
+                    </span>
+                </>
+            )}
         </div>
     );
 }

@@ -26,6 +26,49 @@ import {
 } from '@/services/workflow-service';
 
 /** Handles auto-fill of system params and smart input for required query params */
+/**
+ * Which entities the trigger actually fires for, editable inline.
+ *
+ * <p>The scope lives on the workflow's trigger row, not on the TRIGGER node's config, so the
+ * node panel used to show only the event name -- an admin opening a saved workflow could see
+ * "Audience Lead Submission" but had no way to learn WHICH audience without reopening the
+ * setup wizard, and no way to change it from here. Both the names and the editing surface
+ * come from EventEntityPicker, the same control the wizard uses.</p>
+ */
+function TriggerScopeSection({ instituteId }: { instituteId: string }) {
+    const { triggerConfig, setTriggerConfig } = useWorkflowBuilderStore();
+    const appliedType = triggerConfig.eventAppliedType;
+
+    // Events that fire institute-wide have nothing to scope -- say so rather than rendering
+    // an empty picker that looks broken.
+    if (!appliedType || !SCOPED_APPLIED_TYPES.includes(appliedType)) {
+        return (
+            <p className="mt-2 text-caption text-gray-400">
+                This event fires for the whole institute — there is nothing to scope it to.
+            </p>
+        );
+    }
+
+    const selectedIds = triggerConfig.eventIds?.length
+        ? triggerConfig.eventIds
+        : triggerConfig.eventId
+          ? [triggerConfig.eventId]
+          : [];
+
+    return (
+        <div className="mt-3 border-t pt-3">
+            <EventEntityPicker
+                eventAppliedType={appliedType}
+                multiValue={selectedIds}
+                onMultiChange={(ids) => setTriggerConfig({ eventIds: ids, eventId: undefined })}
+                instituteId={instituteId}
+            />
+        </div>
+    );
+}
+
+const SCOPED_APPLIED_TYPES = ['PACKAGE_SESSION', 'AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'];
+
 function QueryRequiredParams({ params, config, onConfigChange, nodeId, instituteId, edges, nodes, selectedNodeId }: {
     params: string[];
     config: Record<string, unknown>;
@@ -220,6 +263,7 @@ export function NodeConfigPanel() {
                         {selectedTriggerEvent && (
                             <p className="mt-1 text-[10px] text-gray-400">{selectedTriggerEvent.description}</p>
                         )}
+                        <TriggerScopeSection instituteId={instituteId} />
                     </div>
                 )}
 

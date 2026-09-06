@@ -653,11 +653,7 @@ export function WorkflowDiagramSimple({
                                                         <p className="text-sm font-medium text-neutral-700">
                                                             {key}:
                                                         </p>
-                                                        <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 text-xs text-neutral-600">
-                                                            {typeof value === 'object'
-                                                                ? JSON.stringify(value, null, 2)
-                                                                : String(value)}
-                                                        </pre>
+                                                        <DetailValue value={value} />
                                                     </div>
                                                 )
                                             )}
@@ -669,5 +665,43 @@ export function WorkflowDiagramSimple({
                 </DialogContent>
             </Dialog>
         </div>
+    );
+}
+
+/**
+ * Render one configuration detail. The values the diagram endpoint returns are already
+ * human-readable, so raw JSON.stringify was actively unhelpful: a list of audience names
+ * came out as `["JEE Leads"]` and a variable mapping as a brace-wrapped blob. Lists become
+ * lines and key/value maps become rows; only genuinely unexpected shapes fall back to JSON.
+ */
+function DetailValue({ value }: { value: unknown }) {
+    if (Array.isArray(value)) {
+        return (
+            <ul className="space-y-1 rounded bg-white p-2">
+                {value.map((v, i) => (
+                    <li key={i} className="text-xs text-neutral-700">
+                        • {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                    </li>
+                ))}
+            </ul>
+        );
+    }
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>);
+        return (
+            <div className="divide-y divide-neutral-100 rounded bg-white">
+                {entries.map(([k, v]) => (
+                    <div key={k} className="flex gap-2 px-2 py-1.5 text-xs">
+                        <span className="min-w-24 shrink-0 text-neutral-500">{k}</span>
+                        <span className="break-all font-medium text-neutral-700">
+                            {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    return (
+        <p className="break-words rounded bg-white p-2 text-xs text-neutral-700">{String(value)}</p>
     );
 }
