@@ -1034,3 +1034,46 @@ Still open (tracked, not silent):
 - Teacher insights: `GET /tutor/v1/insights` (institute-wide, optional course / batch filter) and
   `GET /tutor/v1/insights/export.csv?sheet=learners|concepts|courses` (row caps 5000 / 2000 / 500);
   the admin card lives on Settings → Course settings (institute) and the course's Tutor Mode tab.
+
+## 16. Teacher voices and avatars: the asset registry (7 September 2026)
+
+**Problem.** Cloned voices were listed straight from the Smallest account with the platform key, so
+every institute saw every other institute's clones, and any voice or avatar id could be pasted into
+settings. Avatars had no stock gallery, no platform layer and a manual creation path.
+
+**Registry.** `tutor_asset_registry` (created by ai_service at startup; `app/models/tutor_asset_registry.py`,
+service `app/services/tutor/asset_registry.py`): one row per asset with `kind` (voice|avatar),
+`provider`, `external_id` (vendor id), `display_name`, `institute_id` (NULL = platform stock),
+`status` (requested → processing → ready | failed | disabled), consent, source photo, requester,
+vendor job id, credits charged.
+
+**Visibility.** `GET /tutor/v1/options` and `/assets` return platform stock plus the caller's own
+rows only. `resolve_settings` drops an avatar that is not a ready visible row and a voice that is
+registered to another institute (`_enforce_registry`).
+
+**Flows.**
+- Voice: `POST /tutor/v1/voice/clone` clones on Smallest, registers the row to the institute and
+  charges `tutor_voice_clone` once.
+- Avatar: `POST /tutor/v1/avatar/create` (photo file id + consent) registers a `requested` row. If
+  the Spatius Open API is enabled it queues the vendor job and the row moves to `processing`; the
+  admin card polls `GET /tutor/v1/avatar/assets/{id}` and the row becomes `ready` with the vendor
+  id, charging `tutor_avatar_create`. Until the vendor enables the API, the request waits in the
+  super-admin queue.
+- Super admin (health portal → "Tutor Avatars & Voices", `/super-admin/v1/tutor-assets`):
+  register stock avatars from app.spatius.ai/avatars/library (UUIDs) or institute-private assets,
+  fulfil requests by pasting the Studio-built avatar id (charges the fee unless unticked), refuse
+  with a reason, disable, delete.
+
+**Admin UI.** `TeacherPresenceField`: photo upload, then "Photo only" (live minute) vs "Animated
+avatar — Premium" (live + avatar minute, shown per learner-minute), a gallery of stock + own
+avatars, and the request-my-avatar block with consent. Course tab can inherit the institute choice.
+
+**Learner UI.** `TeacherPanel`: the avatar is a 4:3 card with the name, state and the stop / mute /
+hide controls overlaid; language and pace are segmented dials that wrap; progress shows as "n/m right".
+
+**Vendor notes.** AvatarKit fetches `/assets/avatar_core_wasm-<hash>.wasm`; the learner build copies
+it from the package (`vite.config.ts`, copy-only — the SDK's own plugin overwrites `_headers`).
+Spatius session tokens: `POST console.us-west.spatius.ai/v1/console/session-tokens`; avatars and
+jobs: `console.spatius.ai/v1/open/...` with `X-App-ID` + `X-API-Key`; the account needs "Open API
+access" enabled by Spatius before creation works (403 otherwise).
+

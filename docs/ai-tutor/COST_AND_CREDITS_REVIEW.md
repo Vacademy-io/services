@@ -173,6 +173,22 @@ $1.40/h in voice alone) and it goes negative if Sarvam becomes the default voice
   Custom avatar creation is $25 on the vendor's side per teacher (not yet passed on; decide whether
   to charge a one-time `tutor_avatar_create`).
 
+## 6c. Custom teacher assets: one-time fees (7 September 2026)
+
+Institutes may register their own teacher **voice** (Smallest.ai instant clone) and their own
+animated **avatar** (Spatius, built from the teacher's photo). Both are charged **once**, on top of
+the per-minute rates, and both are private to the institute that paid for them
+(`tutor_asset_registry`; platform stock rows have no institute and are offered to everyone).
+
+| Tool key | Charged when | Default | Vendor cost |
+|---|---|---|---|
+| `tutor_voice_clone` | the clone is created (`POST /tutor/v1/voice/clone`) | 200 credits | included in the Smallest plan |
+| `tutor_avatar_create` | the avatar request is fulfilled (ready) — automatically when Spatius' API is enabled, otherwise when a super admin pastes the Studio-built avatar id | 1000 credits | Spatius plan allowance (Starter 2/month … Scale 40/month) |
+
+Both rates are editable under AI Settings → pricing. The runtime refuses a saved avatar that is not
+in the registry and a voice registered to another institute, so a pasted id from someone else's
+settings no longer works.
+
 ## 7. Ledger snapshot (last 7 days, all institutes)
 
 Credits deducted: conversation (tutor and chatbot) 14.1, content (compiles and copilot
