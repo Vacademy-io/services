@@ -198,6 +198,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                                                     {r.ocr > 0
                                                         ? ` · ${fmt(r.ocr)} credits OCR`
                                                         : ''}
+                                                    {r.voice > 0 ? ` · ${fmt(r.voice)} voice` : ''}
                                                 </span>
                                             )}
                                         </td>
@@ -245,6 +246,9 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                                 : ''}
                             {t.ocr_pages > 0
                                 ? ` + ${fmt(t.ocr_credits)} for OCR of ${t.ocr_pages} page(s)`
+                                : ''}
+                            {t.voice_credits > 0
+                                ? ` + ${fmt(t.voice_credits)} to prepare the teacher's voice once (${t.voice_languages} language${t.voice_languages > 1 ? 's' : ''}; lessons then play it without per-minute voice cost)`
                                 : ''}
                             {t.images_max > 0
                                 ? ` + up to ${fmt(t.images_max_credits)} for AI images (charged per image made)`

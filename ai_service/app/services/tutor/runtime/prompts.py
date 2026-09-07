@@ -120,6 +120,20 @@ _LEADING_GREETING = re.compile(
     r"^\s*(?:hi|hello|hey|namaste|नमस्ते|welcome(?: back)?)[^.!?।]*[.!?।]\s*", re.IGNORECASE)
 
 
+_NAME_GREETING = re.compile(r"^\s*(?:hi|hello|hey|namaste|नमस्ते|welcome(?: back)?)[,!]?\s*\{student_name\}[,!]?\s*", re.IGNORECASE)
+_NAME_INLINE = re.compile(r"\s*,?\s*\{student_name\}\s*,?\s*")
+
+
+def neutralize_name(text_: str) -> str:
+    """The same line without the learner's name (for prepared audio and
+    learners whose name is unknown): "Hi {student_name}, a force is a push."
+    → "A force is a push."; "Look, {student_name}, at the arrow" → "Look at the arrow"."""
+    t = _NAME_GREETING.sub("", text_ or "", count=1)
+    t = _NAME_INLINE.sub(" ", t)
+    t = " ".join(t.split()).strip()
+    return (t[0].upper() + t[1:]) if t else t
+
+
 def strip_leading_greeting(narration: str) -> str:
     """Drop a compiled narration's own opening "Hi {name}, …" sentence when
     the teacher already greeted (welcome back / next slide)."""

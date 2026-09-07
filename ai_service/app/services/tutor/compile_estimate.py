@@ -35,6 +35,7 @@ def _credits(est: ToolCostEstimator, tool_key: str, params: Dict[str, Any]) -> f
 def estimate_compile(
     db: Session, *, institute_id: str, slide_ids: List[str], language: str, generate_images: bool,
     transcribe_videos: bool, force: bool, ocr_pdfs: bool = True,
+    voice_provider: Optional[str] = None, languages: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     est = ToolCostEstimator(db)
     compile_price = _credits(est, "tutor_compile_slide", {})
@@ -42,6 +43,9 @@ def estimate_compile(
     per_minute = _credits(est, "transcription", {"audio_minutes": 100}) / 100.0
     transcription_min = _credits(est, "transcription", {"audio_minutes": 1})
     ocr_per_page = _credits(est, source_text.OCR_TOOL, {"num_pages": 100}) / 100.0
+    voice_price = _credits(est, "tutor_voice_prepare", {})
+    # Prepared voice: charged per slide per language, once, unless the voice is the free engine.
+    voice_langs = 0 if (voice_provider or "sarvam") == "edge" else max(1, len([x for x in (languages or ["en"]) if x in ("en", "hi")]))
     can_transcribe = transcribe_videos and source_text.transcription_available()
     can_ocr = ocr_pdfs and source_text.ocr_available()
     newest = plan_store.latest_plans_for_slides(db, slide_ids)
@@ -51,13 +55,13 @@ def estimate_compile(
         src = load_slide_source(db, sid)
         if src is None:
             rows.append({"slide_id": sid, "title": None, "kind": "other", "action": "unpublished", "compile": 0,
-                         "transcription": 0, "minutes": 0, "ocr": 0, "pages": 0, "images_max": 0, "total": 0, "note": "Not published"})
+                         "transcription": 0, "minutes": 0, "ocr": 0, "pages": 0, "voice": 0, "images_max": 0, "total": 0, "note": "Not published"})
             continue
         kind = source_kind_label(src)
         existing = newest.get(sid)
         description = ((existing.source_description if existing else None) or src.video_description or "").strip()
         row: Dict[str, Any] = {"slide_id": sid, "title": src.title, "kind": kind, "compile": 0.0, "transcription": 0.0,
-                               "minutes": 0, "ocr": 0.0, "pages": 0, "images_max": 0, "total": 0.0, "note": None, "text": None}
+                               "minutes": 0, "ocr": 0.0, "pages": 0, "voice": 0.0, "images_max": 0, "total": 0.0, "note": None, "text": None}
         if kind == "other":
             row["action"] = "unsupported"
             rows.append(row); continue
@@ -132,7 +136,8 @@ def estimate_compile(
         if generate_images and kind == "document":
             row["images_max"] = MAX_IMAGES_PER_SLIDE
         row["action"] = "compile"
-        row["total"] = round(row["compile"] + row["transcription"] + row["ocr"], 2)
+        row["voice"] = round(voice_price * voice_langs, 2)
+        row["total"] = round(row["compile"] + row["transcription"] + row["ocr"] + row["voice"], 2)
         rows.append(row)
 
     required = round(sum(r["total"] for r in rows), 2)
@@ -155,13 +160,16 @@ def estimate_compile(
             "transcription_minutes": sum(int(r["minutes"]) for r in rows),
             "ocr_credits": round(sum(float(r.get("ocr") or 0) for r in rows), 2),
             "ocr_pages": sum(int(r.get("pages") or 0) for r in rows),
+            "voice_credits": round(sum(float(r.get("voice") or 0) for r in rows), 2),
+            "voice_languages": voice_langs,
             "images_max": images_max,
             "images_max_credits": round(images_max * image_price, 2),
             "required": required,
             "worst_case": round(required + images_max * image_price, 2),
         },
         "prices": {"compile_slide": compile_price, "image": image_price, "transcription_per_minute": round(per_minute, 3),
-                   "transcription_minimum": transcription_min, "ocr_per_page": round(ocr_per_page, 3)},
+                   "transcription_minimum": transcription_min, "ocr_per_page": round(ocr_per_page, 3),
+                   "voice_prepare_per_slide_language": voice_price},
         "balance": balance,
         "sufficient": None if balance is None else balance >= required,
         "transcription_available": source_text.transcription_available(),

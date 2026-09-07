@@ -34,6 +34,7 @@ from ..services.voice_tts import (
     sarvam_voice_catalogue, smallest_available,
 )
 from ..services.tutor.runtime.settings import TutorSettings, resolve_settings
+from ..services.platform_settings_service import get_platform_setting
 from ..services.tutor.slide_source import (
     list_package_slides, package_belongs_to_institute, package_of_slide, slide_belongs_to_institute,
 )
@@ -152,11 +153,19 @@ def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *
     images = p.generate_images if "generate_images" in fields else bool(s.generate_images)
     kb = p.kb_grounding if "kb_grounding" in fields else (
         CompileKbGrounding(**s.kb_grounding) if s.kb_grounding else None)
+    # Prepared voice: the same provider / voice / pace a lesson would use.
+    try:
+        vp_provider = s.tts_provider or str(get_platform_setting("tutor.voice.provider", default="sarvam", db=db) or "sarvam")
+        vp_voice = s.tts_voice or str(get_platform_setting("tutor.voice.voice", default="", db=db) or "")
+    except Exception:  # noqa: BLE001
+        vp_provider, vp_voice = s.tts_provider or "sarvam", s.tts_voice or ""
+    voice_prepare = {"provider": vp_provider, "voice": vp_voice, "base_pace": float(getattr(s, "voice_pace", 1.0) or 1.0),
+                     "languages": [x for x in (s.languages or ["en"]) if x in ("en", "hi")] or ["en"], "course_lang": s.course_language}
     return PlanCompiler(
         institute_id=caller.institute_id, user_id=caller.user_id, language=language,
         teacher_name=teacher, force=force, generate_images=images, kb_grounding=kb,
         compile_run_id=p.compile_run_id or str(uuid.uuid4()), model_override=s.compile_model,
-        transcribe_videos=p.transcribe_videos, ocr_pdfs=p.ocr_pdfs,
+        transcribe_videos=p.transcribe_videos, ocr_pdfs=p.ocr_pdfs, voice_prepare=voice_prepare,
     )
 
 
@@ -198,9 +207,13 @@ def compile_estimate(
     fields = payload.model_fields_set
     images = payload.generate_images if "generate_images" in fields else bool(s.generate_images)
     language = payload.language if "language" in fields else s.course_language
+    try:
+        vp = s.tts_provider or str(get_platform_setting("tutor.voice.provider", default="sarvam", db=db) or "sarvam")
+    except Exception:  # noqa: BLE001
+        vp = s.tts_provider or "sarvam"
     out = estimate_compile(db, institute_id=caller.institute_id, slide_ids=slide_ids, language=language,
                            generate_images=images, transcribe_videos=payload.transcribe_videos,
-                           ocr_pdfs=payload.ocr_pdfs, force=payload.force)
+                           ocr_pdfs=payload.ocr_pdfs, force=payload.force, voice_provider=vp, languages=list(s.languages or ["en"]))
     out["package_id"] = payload.package_id
     return out
 

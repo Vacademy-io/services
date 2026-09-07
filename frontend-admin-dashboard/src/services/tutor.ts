@@ -122,6 +122,8 @@ export interface TutorCompileEstimate {
         minutes: number;
         ocr: number;
         pages: number;
+        /** One-time voice preparation (per language) for this slide. */
+        voice: number;
         images_max: number;
         total: number;
         note: string | null;
@@ -137,6 +139,8 @@ export interface TutorCompileEstimate {
         transcription_minutes: number;
         ocr_credits: number;
         ocr_pages: number;
+        voice_credits: number;
+        voice_languages: number;
         images_max: number;
         images_max_credits: number;
         required: number;
@@ -148,6 +152,7 @@ export interface TutorCompileEstimate {
         transcription_per_minute: number;
         transcription_minimum: number;
         ocr_per_page: number;
+        voice_prepare_per_slide_language: number;
     };
     balance: number | null;
     sufficient: boolean | null;

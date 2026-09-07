@@ -158,3 +158,34 @@ def test_spoken_lines_follow_the_session_language():
     plan.topics[0].concepts[1].check.hint_i18n = {}
     text = " ".join(soft_errors(plan))
     assert "summary_say_i18n['hi'] is not Hindi" in text and "check.hint_i18n['hi'] is missing" in text
+
+
+def test_prepared_voice_lines_and_keys():
+    from app.services.tutor.runtime.speech import cache_key, effective_pace, tutor_segments
+    from app.services.tutor.voice_cache import spoken_lines
+    from app.services.provider_rates import image_cost_usd, ocr_cost_usd, stt_cost_usd, tts_cost_usd
+    view = {"topics": [{"title": "Force", "summary_say": "Recap here.", "summary_say_i18n": {"hi": "सार।"}, "concepts": [
+        {"say": "Hi {student_name}, a force is a push. It moves things.", "say_i18n": {"hi": "नमस्ते {student_name}, force एक push है।"},
+         "check": {"type": "mcq", "prompt": "Which is a push?", "prompt_i18n": {"hi": "कौन सा push है?"}, "hint": "Think of kicking.", "hint_i18n": {}, "expected": "kicking"},
+         "predict": "What moves it?", "predict_i18n": {"hi": "इसे क्या हिलाता है?"}}]}]}
+    en = spoken_lines(view, "en", "en")
+    assert en[0] == "A force is a push. It moves things."   # the name is gone, the sentence is kept
+    assert not any("{student_name}" in l for l in en)
+    assert "Which is a push?" in en and "Take your time. Here's a hint: Think of kicking." in en and "Recap here." in en
+    assert any(l.startswith("Before I show you") for l in en) and "Okay, let's move on." in en
+    hi = spoken_lines(view, "hi", "en")
+    assert "कौन सा push है?" in hi and "सार।" in hi and not any("Think of kicking" in l for l in hi)   # no Hindi hint → not spoken
+    # the warm-up keys exactly what the socket will look up
+    seg = tutor_segments("Recap here.")[0][0]
+    assert cache_key("smallest", "nirupma", "en-IN", str(effective_pace(1.0, "normal", seg)), seg) == cache_key("smallest", "nirupma", "en-IN", "1.0", "Recap here.")
+    assert effective_pace(1.0, "normal", "This means that") == 0.92 and effective_pace(0.9, "slower", "") == 0.63
+    assert tts_cost_usd("smallest", 1000) == 0.025 and tts_cost_usd("edge", 5000) == 0 and stt_cost_usd("sarvam", 3600) == 0.36
+    assert ocr_cost_usd(7) == 0.175 and image_cost_usd(None) == 0.04
+
+
+def test_neutralize_name_keeps_the_sentence():
+    from app.services.tutor.runtime.prompts import neutralize_name
+    assert neutralize_name("Hi {student_name}, a force is a push. It moves things.") == "A force is a push. It moves things."
+    assert neutralize_name("Look, {student_name}, at the arrow on the left.") == "Look at the arrow on the left."
+    assert neutralize_name("नमस्ते {student_name}, force एक push है।") == "Force एक push है।"
+    assert neutralize_name("No name here.") == "No name here."

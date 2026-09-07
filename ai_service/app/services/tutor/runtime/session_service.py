@@ -504,22 +504,28 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
 
 
 def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id: str, language: str,
-                       characters: int, detail: Optional[str] = None, provider: str = "sarvam") -> None:
+                       characters: int, detail: Optional[str] = None, provider: str = "sarvam",
+                       seconds: Optional[float] = None, cached: bool = False) -> None:
     """Attribute TTS / STT spend to the institute (same row shape as the
-    voice call's metering), in its own short session."""
+    voice call's metering), in its own short session, with what the vendor
+    charged us (`total_price`); a cached line costs nothing."""
+    from ...provider_rates import stt_cost_usd, tts_cost_usd
     try:
+        cost = 0.0 if cached else (tts_cost_usd(provider, characters) if kind == "tts" else stt_cost_usd(provider, seconds or 0.0))
         with db_session() as db:
             TokenUsageService(db).record_usage(
                 api_provider=ApiProvider.GOOGLE_TTS,
                 prompt_tokens=0, completion_tokens=0, total_tokens=0,
                 request_type=RequestType.TTS_PREMIUM if kind == "tts" else RequestType.TRANSCRIPTION,
                 institute_id=institute_id, user_id=user_id,
-                model=({"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural"}.get(provider, provider)
+                model=({"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural", "smallest": "smallest:lightning-v3.1"}.get(provider, provider)
                        if kind == "tts" else "sarvam:saaras-v3"),
                 request_id=session_id,
                 tts_provider=provider if kind == "tts" else "sarvam",
                 character_count=max(int(characters or 0), 0),
-                metadata={"surface": "tutor", "language": language, "detail": detail},
+                total_price=cost,
+                metadata={"surface": "tutor", "language": language, "detail": detail, "cached": cached,
+                          **({"seconds": round(float(seconds), 1)} if seconds else {})},
             )
             db.commit()
     except Exception:  # noqa: BLE001

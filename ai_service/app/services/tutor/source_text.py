@@ -264,10 +264,11 @@ async def ocr_pdf(src: SlideSource, *, institute_id: str, user_id: Optional[str]
     _store(VENDOR_PDF, file_id, body, file_id=file_id, file_type="pdf_ocr")
     pages = int(doc.ocr_pages or 0)
     if pages > 0:
+        from ..provider_rates import ocr_cost_usd
         record_tool_billing(
             tool_key=OCR_TOOL, tool_params={"num_pages": pages}, request_type=RequestType.PDF_QUESTIONS,
             model="mathpix", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
-            request_id=request_id, idempotency_key=f"tutor_ocr:{file_id}",
+            request_id=request_id, idempotency_key=f"tutor_ocr:{file_id}", provider_cost_usd=ocr_cost_usd(pages),
         )
     _set_text(src, body, "pdf")
     return pages

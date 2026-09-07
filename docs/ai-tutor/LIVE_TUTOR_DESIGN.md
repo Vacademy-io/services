@@ -1015,7 +1015,10 @@ Still open (tracked, not silent):
 - **Stock images** (§4.5) do not exist; the compile prompt only offers generated images.
 - **Fallback to the ordinary slide viewer** for non-teachable slides (§4.2) is not implemented:
   the sidebar skips them.
-- The TTS cache is in-process (empties on deploy); moving it under the media path is open.
+- Prepared voice (2026-09-07): every spoken line of a READY plan is synthesised once after the compile
+  (`voice_cache.warm_plan`, charged `tutor_voice_prepare` per slide per language), stored as mp3 in S3 and
+  indexed in `tutor_tts_cache`; the socket checks the in-process LRU, then this cache, then the vendor,
+  and stores what it synthesises live. See COST_AND_CREDITS_REVIEW.md §6a.
 - `teaching_media.cost_credits` / `file_id` are not populated for generated images.
 - Teacher insights: `GET /tutor/v1/insights` (institute-wide, optional course / batch filter) and
   `GET /tutor/v1/insights/export.csv?sheet=learners|concepts|courses` (row caps 5000 / 2000 / 500);

@@ -134,6 +134,10 @@ class _Run:
     ocr_pages: int = 0
 
 
+# Voice warm-ups outlive the compile that started them.
+_VOICE_TASKS: set = set()
+
+
 class PlanCompiler:
     def __init__(
         self,
@@ -149,8 +153,13 @@ class PlanCompiler:
         model_override: Optional[str] = None,
         transcribe_videos: bool = True,
         ocr_pdfs: bool = True,
+        voice_prepare: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.institute_id = institute_id
+        # Prepared voice: {"provider", "voice", "base_pace", "languages", "course_lang"}
+        # — every spoken line of a READY plan is synthesised once, in the
+        # background, so lessons play it instead of paying per learner.
+        self.voice_prepare = voice_prepare
         # Uploaded videos with no transcript yet: run Whisper (per-minute
         # credits) or park the slide for a description. Scanned PDFs: MathPix
         # OCR (per page) or park.
@@ -360,6 +369,8 @@ class PlanCompiler:
             )
         # Images are charged only for a plan that was actually delivered.
         self._bill_images(run)
+        if status_after == "READY" and self.voice_prepare and source.kind != "quiz":
+            self._schedule_voice_prepare(plan_id, slide_id)
         return {"type": "PLAN_READY" if status_after == "READY" else "PLAN_STALE",
                 "slide_id": slide_id, "plan_id": plan_id, "version": version,
                 "kind": source.kind, "model": run.model_used, "status": status_after,
@@ -391,15 +402,35 @@ class PlanCompiler:
             metadata={"tool": "tutor_compile_slide", "slide_id": slide_id, "outcome": "failed"},
         )
 
+    def _schedule_voice_prepare(self, plan_id: str, slide_id: str) -> None:
+        """Warm the teacher's audio for this plan after the compile returns."""
+        from .voice_cache import warm_plan
+        vp = self.voice_prepare or {}
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(warm_plan(
+            plan_id=plan_id, slide_id=slide_id, institute_id=self.institute_id, user_id=self.user_id,
+            provider=str(vp.get("provider") or "sarvam"), voice=str(vp.get("voice") or ""),
+            base_pace=float(vp.get("base_pace") or 1.0), languages=list(vp.get("languages") or ["en"]),
+            course_lang=str(vp.get("course_lang") or self.language), request_id=self.compile_run_id,
+        ))
+        _VOICE_TASKS.add(task)
+        task.add_done_callback(_VOICE_TASKS.discard)
+
     def _bill_images(self, run: _Run) -> None:
+        from ..provider_rates import image_cost_usd
+        cost = image_cost_usd(getattr(self, "image_model", None)) if run.images else 0.0
         for url, usage in run.images:
             try:
                 record_tool_billing(
                     tool_key="tutor_media_image", tool_params={}, request_type=RequestType.IMAGE,
-                    model="image", prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+                    model=str(getattr(self, "image_model", None) or "image"), prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
                     completion_tokens=int((usage or {}).get("completion_tokens") or 0),
                     institute_id=self.institute_id, user_id=self.user_id, user_role="ADMIN",
                     request_id=self.compile_run_id, idempotency_key=f"tutor_media:{url}"[:255],
+                    provider_cost_usd=cost,
                 )
             except Exception:  # noqa: BLE001
                 logger.warning("Image billing failed for %s", url, exc_info=True)

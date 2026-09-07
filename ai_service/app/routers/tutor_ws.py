@@ -45,6 +45,7 @@ from ..services.tutor.runtime.intents import detect_intent
 from ..services.tutor.runtime import prompts
 from ..services.tutor.runtime.revisit import fresh_check
 from ..services.tutor.runtime.summary import rewrite_rolling_summary
+from ..services.tutor import voice_cache
 from ..services.tutor.runtime.settings import TutorSettings
 from ..services.tutor.slide_source import package_belongs_to_institute
 from ..services.voice_tts import (
@@ -53,31 +54,6 @@ from ..services.voice_tts import (
 )
 from .voice_agent import MIN_SPEECH_WAV_BYTES, TTS_CHUNK_SIZE, _SENTENCE_END, _transcode_to_wav
 
-
-def _tutor_segments(text_: str, max_chars: Optional[int] = None) -> List[Tuple[str, int, int]]:
-    """(segment, first sentence index, sentence count): sentences packed up to
-    `max_chars`, never cut mid-sentence, so the board can follow the words."""
-    max_chars = max_chars or TUTOR_SEGMENT_MAX_CHARS
-    sentences = [x.strip() for x in _SENTENCE_END.split((text_ or "").strip()) if x and x.strip()]
-    out: List[Tuple[str, int, int]] = []
-    buf, start, count = "", 0, 0
-    for i, sent in enumerate(sentences):
-        if buf and len(buf) + 1 + len(sent) > max_chars:
-            out.append((buf, start, count))
-            buf, start, count = sent, i, 1
-        else:
-            buf = f"{buf} {sent}".strip()
-            count += 1
-            if count == 1:
-                start = i
-    if buf:
-        out.append((buf, start, count))
-    return out
-
-
-def _step_pace(pace: str, delta: int) -> str:
-    i = PACE_ORDER.index(pace) if pace in PACE_ORDER else PACE_ORDER.index("normal")
-    return PACE_ORDER[max(0, min(len(PACE_ORDER) - 1, i + delta))]
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tutor", tags=["tutor-runtime"])
@@ -92,15 +68,12 @@ MEDIA_IDLE_SECONDS = 30 * 60
 MAX_TURNS_PER_MINUTE = 20
 MAX_TURNS_PER_SESSION = 400
 LANG_TO_STT = {"en": "en-IN", "hi": "hi-IN"}
-# The learner's own pace: fast / normal (medium) / slow / slower.
-PACE_MULTIPLIER = {"slower": 0.7, "slow": 0.85, "normal": 1.0, "fast": 1.2}
-PACE_ORDER = ["slower", "slow", "normal", "fast"]
-# Spoken rhythm: a sentence per segment where possible, never a sentence
-# split; a beat before every question; definitions a touch slower.
-TUTOR_SEGMENT_MAX_CHARS = 200
+# Pace, segmentation and cache keys are shared with the voice warm-up (runtime/speech.py).
+from ..services.tutor.runtime.speech import (  # noqa: E402
+    DEFINITION_PACE, PACE_MULTIPLIER, PACE_ORDER, TUTOR_SEGMENT_MAX_CHARS, cache_key as _cache_key, effective_pace,
+    step_pace as _step_pace, tutor_segments as _tutor_segments,
+)
 QUESTION_BEAT_MS = 450
-DEFINITION_PACE = 0.92
-_DEFINITION_RE = re.compile(r"\b(means|is called|is defined|definition|refers to|in other words)\b", re.IGNORECASE)
 # Silence recovery: a nudge (hint) after this long on an open question; the
 # idle exit then counts from the nudge.
 NUDGE_SECONDS = 60
@@ -126,10 +99,6 @@ def _fire_and_forget(coro) -> None:
 # ── in-process TTS cache (compiled narration repeats across learners) ────────
 _TTS_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
 _TTS_CACHE_MAX = 300
-
-
-def _cache_key(provider: str, voice: str, lang: str, pace: str, text_: str) -> str:
-    return hashlib.sha256(f"{provider}|{voice}|{lang}|{pace}|{text_}".encode("utf-8")).hexdigest()
 
 
 def _cache_get(k: str) -> Optional[bytes]:
@@ -347,8 +316,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         base_pace = float(getattr(settings, "voice_pace", 1.0) or 1.0)
 
         def _effective_pace(segment: str = "") -> float:
-            slow = DEFINITION_PACE if segment and _DEFINITION_RE.search(segment) else 1.0
-            return round(max(0.5, min(2.0, base_pace * PACE_MULTIPLIER.get(pace, 1.0) * slow)), 2)
+            return effective_pace(base_pace, pace, segment)
         # Silence recovery state: when the current question was asked and
         # whether the learner has already been nudged on it.
         awaiting_answer_since: Optional[float] = None
@@ -413,6 +381,18 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 audio = _cache_get(key)
                 provider_used = tts_provider
                 if audio is None:
+                    # Prepared voice (compile-time warm-up, or another learner's
+                    # lesson): the same audio, already paid for once.
+                    row = await asyncio.to_thread(voice_cache.lookup, key)
+                    prepared = await voice_cache.fetch(row.url) if row is not None else None
+                    if prepared:
+                        audio = prepared
+                        _cache_put(key, audio)
+                        svc.record_media_usage(kind="tts", institute_id=institute_id, user_id=user_id,
+                                               session_id=tutor_session_id, language=_lang_stt(),
+                                               characters=len(segment), detail=f"tutor:{voice}", provider=tts_provider, cached=True)
+                        svc.bump_telemetry(tutor_session_id, tts_prepared_hits=1)
+                if audio is None:
                     audio, _mime, provider_used = await synthesize_speech(
                         text=segment, language=_lang_stt(), voice=voice, provider=tts_provider,
                         pace=seg_pace,
@@ -424,6 +404,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                                                session_id=tutor_session_id, language=_lang_stt(),
                                                characters=len(segment), detail=f"tutor:{voice}", provider=provider_used)
                         svc.bump_telemetry(tutor_session_id, tts_chars=len(segment))
+                        if provider_used == tts_provider:
+                            _fire_and_forget(voice_cache.store(key, provider=tts_provider, voice=voice, lang=_lang_stt(),
+                                                               pace=str(seg_pace), text_=segment, audio=audio, mime=_mime))
                 else:
                     svc.bump_telemetry(tutor_session_id, tts_cache_hits=1)
                 if not audio:
@@ -1025,7 +1008,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     await _send({"type": "audio_end", "reason": "error", "detail": f"stt_http_{e.status or 'err'};{note}"})
                     return
                 svc.record_media_usage(kind="stt", institute_id=institute_id, user_id=user_id, session_id=tutor_session_id,
-                                       language=_lang_stt(), characters=len(text_ or ""), detail="tutor")
+                                       language=_lang_stt(), characters=len(text_ or ""), detail="tutor",
+                                       seconds=(len(audio) / 32000.0) if mime == "audio/wav" else None)
                 await _send({"type": "transcript_final", "text": text_ or ""})
                 await _handle_learner_text(text_ or "", spoken=True)
             except asyncio.CancelledError:

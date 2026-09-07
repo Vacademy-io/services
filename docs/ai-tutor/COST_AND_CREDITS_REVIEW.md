@@ -101,7 +101,8 @@ speech per hour).
 | Live turns — Gemini 2.5 Flash (if selected) | $0.06 | 90 turns × $0.0007 |
 | Revisit questions, predict turns, session summary | $0.01 | ~8 small calls |
 | Compute (pod, transcoding) | ~$0.02 | |
-| **Total, Smallest voice** | **$1.00–1.10** | |
+| **Total, Smallest voice (before prepared voice)** | **$1.00–1.10** | |
+| **Total, Smallest voice, prepared (§6a)** | **$0.25–0.40** | |
 | **Total, Edge voice** | **$0.10** | |
 
 Charged: 180 credits = **$1.80 (₹167) per hour**.
@@ -132,6 +133,33 @@ $1.40/h in voice alone) and it goes negative if Sarvam becomes the default voice
    it out of the platform default.
 6. **Transcription is very healthy** with OpenRouter (0.5 credit/min billed, $0.0002/min paid).
    Do not lower it; it also covers the ffmpeg compute and the two-step long-lecture handling.
+
+## 6a. Decisions taken on 7 September 2026
+
+- `tutor_media_image` → **5 credits**; `html_document_pdf` and `kb_ingest_page` → **3 credits per
+  page** (set in the portal; `ai_tool_pricing` rows are the source of truth).
+- Every voice, speech-to-text, image, OCR and transcription usage row now carries the vendor's
+  cost in `total_price` (`services/provider_rates.py` holds the list rates; update them from
+  invoices).
+- **Prepared voice.** Institutes pay once; per-learner per-minute voice was the recurring cost
+  they dislike. Every spoken line of a compiled slide — narration, recap, questions, hints,
+  predict questions and the fixed lines around them — is now synthesised once, right after the
+  slide compiles, stored as mp3 in S3 (`tutor_tts_cache`, `services/tutor/voice_cache.py`) and
+  played by every lesson. Only the model-written lines of a conversation (verdicts, doubt
+  answers) and the greeting with the learner's name are synthesised live. The audio is
+  identical — same engine, voice and pace — so there is no quality change.
+  - Charged once: `tutor_voice_prepare`, **8 credits per slide per language** (about 2,000
+    characters, $0.05 on Smallest), shown in the estimate dialog as "to prepare the teacher's
+    voice once".
+  - Effect on a one-hour lesson (Smallest voice): live synthesis drops from ~36,000 characters
+    to roughly 6,000–9,000 (verdicts and doubts), i.e. from ~$0.90 to **$0.15–0.25 per hour**;
+    the whole hour costs us **$0.25–0.40** against $1.80 charged. That headroom is what allows
+    the live minute to come down to **2 credits ($1.20/hour, ₹111)** while keeping a 65–75%
+    margin — the recommended next step once a week of real lessons confirms the hit rate
+    (`tutor_session.summary_json.tts_prepared_hits` vs `tts_chars`).
+  - A learner's pace choice other than "Medium" and a switched language on a course prepared
+    in one language fall back to live synthesis for those lines; the cache fills itself from
+    those lessons too, so the second learner at that pace is served from the cache.
 
 ## 7. Ledger snapshot (last 7 days, all institutes)
 

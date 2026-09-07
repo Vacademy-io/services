@@ -322,6 +322,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # ── Live AI tutor (V494) ──────────────────────────────────────────────
     # One strong-model compile call per slide, charged as max(flat, actual).
     # Reuses request_type 'content' so no ai_token_usage CHECK change is needed.
+    # Prepared voice: every spoken line of a compiled slide synthesised once
+    # per language (cost review 2026-09-07) — about 2,000 characters, so the
+    # vendor cost is ~$0.05 on Smallest; charged 8 credits per slide per language.
+    "tutor_voice_prepare": {
+        "request_type": "tts_premium",
+        "flat_base_credits": Decimal("8"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "tutor_compile_slide": {
         "request_type": "content",
         "flat_base_credits": Decimal("2"),
