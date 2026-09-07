@@ -43,13 +43,32 @@ describe("courseShowcase", () => {
       .toContain("Fresh from the studio");
   });
 
-  it("shows a skeleton per course while loading, capped at 4", () => {
+  it("shows a skeleton per course while loading, capped at the track count", () => {
     const html = render({ title: "X", limit: 8 });
-    expect((html.match(/animate-pulse/g) || []).length).toBe(4);
+    expect((html.match(/animate-pulse/g) || []).length).toBe(3);
   });
 
   it("honours the limit for small counts", () => {
     const html = render({ title: "X", limit: 2 });
     expect((html.match(/animate-pulse/g) || []).length).toBe(2);
+  });
+
+  // A one- or two-course strip must not sit left-aligned in a 3-up grid.
+  it("narrows and centres the grid for a single course", () => {
+    const html = render({ title: "X", limit: 1 });
+    expect(html).toContain("max-w-sm");
+    expect(html).toContain("mx-auto");
+    expect(html).not.toContain("lg:grid-cols-3");
+  });
+
+  it("narrows to two tracks for two courses", () => {
+    const html = render({ title: "X", limit: 2 });
+    expect(html).toContain("max-w-3xl");
+    expect(html).toContain("sm:grid-cols-2");
+  });
+
+  it("uses four tracks only in grid layout", () => {
+    expect(render({ title: "X", limit: 8, layout: "grid" })).toContain("lg:grid-cols-4");
+    expect(render({ title: "X", limit: 8, layout: "row" })).toContain("lg:grid-cols-3");
   });
 });

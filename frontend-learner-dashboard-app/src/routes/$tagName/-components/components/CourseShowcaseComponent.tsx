@@ -184,6 +184,23 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
         return list.slice(0, Math.max(1, limit));
     }, [courses, source, tag, courseIds, limit]);
 
+    // A curated strip is often ONE or TWO courses. Left-aligning those in a
+    // 3- or 4-up grid leaves the row visibly half-empty, so narrow the track
+    // count to what is actually shown and centre it. Skeletons use `limit`
+    // because `shown` is still empty while loading.
+    const maxCols = layout === "grid" ? 4 : 3;
+    const visibleCount = Math.min(
+        Math.max(loading ? limit : shown.length, 1),
+        maxCols,
+    );
+    const gridClass = cn(
+        "grid gap-6 mx-auto",
+        visibleCount === 1 && "max-w-sm grid-cols-1",
+        visibleCount === 2 && "max-w-3xl grid-cols-1 sm:grid-cols-2",
+        visibleCount === 3 && "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+        visibleCount >= 4 && "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4",
+    );
+
     const openCourse = (c: ShowcaseCourse) =>
         navigate({
             to: `/${tagName}/${c.id}`,
@@ -213,16 +230,9 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                     </p>
                 )}
 
-                <div
-                    className={cn(
-                        "grid gap-6",
-                        layout === "row"
-                            ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                            : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4",
-                    )}
-                >
+                <div className={gridClass}>
                     {loading
-                        ? Array.from({ length: Math.min(limit, 4) }).map((_, i) => (
+                        ? Array.from({ length: visibleCount }).map((_, i) => (
                               <div
                                   key={i}
                                   className="h-80 animate-pulse rounded-catalogue-lg bg-catalogue-bg-muted"
