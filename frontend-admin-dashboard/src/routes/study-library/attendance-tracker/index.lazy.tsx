@@ -64,6 +64,11 @@ type ClassAttendanceData = {
     [key: string]: ClassAttendanceItem[];
 };
 
+// Batches without an active DEFAULT enroll invite have a null invite_code; appending it
+// blindly renders "Batch name (null)" in the picker.
+const batchLabel = (batch: BatchType): string =>
+    batch.invite_code ? `${batch.batch_name} (${batch.invite_code})` : batch.batch_name;
+
 const formatDurationMinutes = (mins: number | null | undefined): string => {
     if (mins == null || mins <= 0) return '—';
     if (mins < 60) return `${mins} min`;
@@ -407,7 +412,7 @@ function AttendanceTrackerContent() {
 
         const extractedBatches = batches.flatMap((batchData: batchWithStudentDetails) =>
             batchData.batches.map((batch: BatchType) => ({
-                label: `${batch.batch_name} (${batch.invite_code})`,
+                label: batchLabel(batch),
                 value: batch.package_session_id,
             }))
         );
@@ -422,7 +427,7 @@ function AttendanceTrackerContent() {
             for (const batchData of batches as batchWithStudentDetails[]) {
                 for (const batch of batchData.batches) {
                     map.set(batch.package_session_id, {
-                        batchName: `${batch.batch_name} (${batch.invite_code})`,
+                        batchName: batchLabel(batch),
                         packageId: batchData.package_dto.id,
                         packageName: batchData.package_dto.package_name,
                     });
