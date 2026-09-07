@@ -537,11 +537,35 @@ def insights_csv(
 
 # ── option catalogues for the Tutor Mode settings cards ──────────────────────
 
+def _one_time_fees(db: Session) -> Dict[str, float]:
+    from ..services.tool_cost_estimator import ToolCostEstimator
+    from ..services.tutor import asset_registry
+    try:
+        pricing = ToolCostEstimator(db).get_tool_pricing()
+        return {"voice": float(pricing.get(asset_registry.VOICE_CLONE_TOOL, {}).get("flat_base_credits") or 0),
+                "avatar": float(pricing.get(asset_registry.AVATAR_CREATE_TOOL, {}).get("flat_base_credits") or 0),
+                "avatar_minute": float(pricing.get("tutor_avatar_minute", {}).get("per_unit_credits") or 0),
+                "live_minute": float(pricing.get("tutor_live_minute", {}).get("per_unit_credits") or 0)}
+    except Exception:  # noqa: BLE001
+        return {"voice": 0.0, "avatar": 0.0, "avatar_minute": 0.0, "live_minute": 0.0}
+
+
+def _voice_option(a: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": a["external_id"], "name": a["display_name"] + ("" if a["stock"] else " (your voice)"),
+            "gender": a.get("gender"), "languages": a.get("languages") or [], "cloned": not a["stock"],
+            "stock": a["stock"], "asset_id": a["id"]}
+
+
 @router.get("/options", summary="Voices per provider and models for the Tutor Mode settings dropdowns")
 async def tutor_options(
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
+    """Voices: each provider's stock catalogue plus the registry rows the
+    caller may see (platform stock + its own clones). Other institutes'
+    clones are never listed. Avatars come only from the registry."""
+    from ..services import spatius_service
+    from ..services.tutor import asset_registry
     voices: Dict[str, List[Dict[str, Any]]] = {"sarvam": sarvam_voice_catalogue(), "google": [], "edge": [], "smallest": []}
     for lang, vid in _EDGE_DEFAULT_VOICES.items():
         voices["edge"].append({"id": vid, "name": vid.split("-")[-1].replace("Neural", ""), "gender": "female", "languages": [lang]})
@@ -553,14 +577,13 @@ async def tutor_options(
             voices["smallest"] = await list_smallest_voices()
         except Exception as e:  # noqa: BLE001
             logger.warning("Smallest voice catalogue unavailable: %s", e)
-        try:
-            for v in await list_cloned_voices_smallest():
-                vid = v.get("voiceId") or v.get("voice_id")
-                if vid:
-                    voices["smallest"].insert(0, {"id": str(vid), "name": f"{v.get('displayName') or v.get('name') or vid} (cloned)",
-                                                  "gender": None, "languages": [], "cloned": True})
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Smallest cloned voices unavailable: %s", e)
+    assets = asset_registry.visible(db, institute_id=caller.institute_id)
+    registered_voices = [a for a in assets if a["kind"] == "voice" and a["status"] == "ready" and a["external_id"]]
+    for a in reversed(registered_voices):
+        bucket = voices.setdefault(a["provider"], [])
+        bucket[:] = [v for v in bucket if v.get("id") != a["external_id"]]
+        bucket.insert(0, _voice_option(a))
+    avatars = [a for a in assets if a["kind"] == "avatar"]
     rows = db.execute(text("""
         SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
         FROM ai_models
@@ -568,9 +591,27 @@ async def tutor_options(
         ORDER BY display_order, provider, name
     """)).fetchall()
     models = [{"model_id": r[0], "name": r[1], "provider": r[2], "tier": r[3], "is_free": bool(r[4])} for r in rows]
-    from ..services import spatius_service
     return {"voices": voices, "models": models, "smallest_available": smallest_available(),
-            "avatar_available": spatius_service.available(), "avatar_provider": "spatius" if spatius_service.available() else None}
+            "avatar_available": spatius_service.available(), "avatar_provider": "spatius" if spatius_service.available() else None,
+            "avatars": avatars, "fees": _one_time_fees(db)}
+
+
+# ── registered assets (voices + avatars the institute may use) ───────────────
+
+@router.get("/assets", summary="Voices and avatars this institute may use (platform stock + its own)")
+def list_assets(kind: Optional[str] = Query(default=None, pattern="^(voice|avatar)$"),
+                caller: Caller = Depends(_caller), db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services.tutor import asset_registry
+    return {"assets": asset_registry.visible(db, institute_id=caller.institute_id, kind=kind), "fees": _one_time_fees(db)}
+
+
+@router.delete("/assets/{asset_id}", summary="Stop using one of this institute's own voices or avatars")
+def disable_asset(asset_id: str, caller: Caller = Depends(_caller), db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services.tutor import asset_registry
+    row = asset_registry.get(db, asset_id)
+    if not row or row["institute_id"] != caller.institute_id:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return asset_registry.update(db, asset_id, status="disabled") or {}
 
 
 # ── teacher avatar (Spatius, premium) ────────────────────────────────────────
@@ -583,36 +624,67 @@ class AvatarCreateRequest(BaseModel):
     consent: bool = False
 
 
-@router.post("/avatar/create", summary="Create a teacher avatar (Spatius) from the teacher's face photo")
-async def avatar_create(payload: AvatarCreateRequest, caller: Caller = Depends(_caller)) -> Dict[str, Any]:
+def _avatar_status(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {"asset_id": row["id"], "status": row["status"], "avatar_id": row.get("external_id") if row["status"] == "ready" else None,
+            "error": row.get("error"), "provider": row["provider"], "display_name": row["display_name"],
+            "credits_charged": row.get("credits_charged") or 0, "created_at": row.get("created_at")}
+
+
+@router.post("/avatar/create", summary="Request a custom teacher avatar from the teacher's face photo")
+async def avatar_create(payload: AvatarCreateRequest, caller: Caller = Depends(_caller),
+                        db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    """Registers the request for this institute. When the vendor's creation
+    API is enabled it runs at once; otherwise the request waits for a super
+    admin to build it in Spatius Studio and paste the avatar id. The one-time
+    fee is charged when the avatar is ready."""
     from ..services import spatius_service
     from ..services.media_file_client import get_public_file_url
+    from ..services.tutor import asset_registry
     if not spatius_service.available():
         raise HTTPException(status_code=503, detail="The teacher avatar is not configured on this server")
     if not payload.consent:
         raise HTTPException(status_code=400, detail="Confirm that the teacher has consented to an animated likeness")
+    pending = [a for a in asset_registry.visible(db, institute_id=caller.institute_id, kind="avatar")
+               if not a["stock"] and a["status"] in ("requested", "processing")]
+    if pending:
+        return _avatar_status(pending[0])
     try:
         url = await get_public_file_url(payload.file_id)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"The face photo could not be resolved: {e}")
+    row = asset_registry.create(db, kind="avatar", provider="spatius", display_name=(payload.name or "Teacher").strip()[:120],
+                                institute_id=caller.institute_id, status="requested", source_file_id=payload.file_id,
+                                consent=True, requested_by=caller.user_id, notes=url[:1000])
     try:
         job = await spatius_service.create_avatar(url, name=payload.name)
+        row = asset_registry.update(db, row["id"], status="processing", vendor_job_id=str(job.get("job_id") or "")) or row
     except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    logger.info("Avatar creation queued for institute %s by %s: job %s", caller.institute_id, caller.user_id, job.get("job_id"))
-    return {"job_id": job.get("job_id"), "status": job.get("status"), "provider": "spatius"}
+        # Typically "Open API access is not configured": the request waits in the super-admin queue.
+        logger.info("Avatar request %s for institute %s queued for manual fulfilment: %s", row["id"], caller.institute_id, e)
+    return _avatar_status(row)
 
 
-@router.get("/avatar/jobs/{job_id}", summary="Status of a teacher avatar creation job")
-async def avatar_job_status(job_id: str, caller: Caller = Depends(_caller)) -> Dict[str, Any]:
+@router.get("/avatar/assets/{asset_id}", summary="Status of a custom avatar request")
+async def avatar_request_status(asset_id: str, caller: Caller = Depends(_caller),
+                                db: Session = Depends(db_dependency)) -> Dict[str, Any]:
     from ..services import spatius_service
-    if not spatius_service.available():
-        raise HTTPException(status_code=503, detail="The teacher avatar is not configured on this server")
-    try:
-        job = await spatius_service.avatar_job(job_id)
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return {"job_id": job_id, "status": job.get("status"), "avatar_id": job.get("avatar_id"), "error": job.get("error"), "provider": "spatius"}
+    from ..services.tutor import asset_registry
+    row = asset_registry.get(db, asset_id)
+    if not row or row["institute_id"] != caller.institute_id or row["kind"] != "avatar":
+        raise HTTPException(status_code=404, detail="Avatar request not found")
+    if row["status"] == "processing" and row.get("vendor_job_id") and spatius_service.available():
+        try:
+            job = await spatius_service.avatar_job(row["vendor_job_id"])
+            if job.get("status") == "succeeded" and job.get("avatar_id"):
+                row = asset_registry.update(db, asset_id, status="ready", external_id=str(job["avatar_id"])) or row
+                asset_registry.charge_one_time(db, asset=row, tool_key=asset_registry.AVATAR_CREATE_TOOL,
+                                               model="spatius-avatar", user_id=caller.user_id)
+                row = asset_registry.get(db, asset_id) or row
+            elif job.get("status") == "failed":
+                row = asset_registry.update(db, asset_id, status="failed", error=str(job.get("error") or "The vendor could not build the avatar")) or row
+        except RuntimeError as e:
+            logger.warning("avatar job poll failed for %s: %s", asset_id, e)
+    return _avatar_status(row)
 
 
 # (tool pricing lives in super_admin.py — see /super-admin/v1/tool-pricing)
@@ -627,13 +699,18 @@ async def clone_voice(
     file: UploadFile = File(...),
     display_name: str = Form(..., min_length=1, max_length=80),
     language: Optional[str] = Form(default=None),
+    consent: bool = Form(default=True),
     caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
-    """Returns the new voice id; the admin saves it as the tutor voice with
-    provider `smallest`. Consent: the institute uploads its own teacher's
-    sample — the card states this before the upload."""
+    """Returns the new voice id, registered to this institute (nobody else
+    sees it), and charges the one-time fee. Consent: the institute confirms
+    it holds the speaker's permission."""
+    from ..services.tutor import asset_registry
     if not smallest_available():
         raise HTTPException(status_code=503, detail="Voice cloning is not configured on this server")
+    if not consent:
+        raise HTTPException(status_code=400, detail="Confirm that the speaker has consented to a cloned voice")
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty audio file")
@@ -644,21 +721,28 @@ async def clone_voice(
                                             display_name=display_name, language=language)
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    logger.info("Voice cloned for institute %s by %s: %s", caller.institute_id, caller.user_id, result["voice_id"])
-    return {"voice_id": result["voice_id"], "provider": "smallest", "display_name": display_name}
-
-
-@router.get("/voice/clones", summary="Cloned voices available to the tutor (Smallest.ai)")
-async def cloned_voices(caller: Caller = Depends(_caller)) -> Dict[str, Any]:
-    if not smallest_available():
-        return {"available": False, "voices": []}
+    row = asset_registry.create(db, kind="voice", provider="smallest", external_id=result["voice_id"],
+                                display_name=display_name.strip(), institute_id=caller.institute_id, status="ready",
+                                languages=[language] if language else None, consent=True, requested_by=caller.user_id)
+    charged = 0.0
     try:
-        voices = await list_cloned_voices_smallest()
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return {"available": True, "voices": [
-        {"voice_id": v.get("voiceId") or v.get("voice_id"), "name": v.get("displayName") or v.get("name"),
-         "status": v.get("status")} for v in voices
+        charged = float(asset_registry.charge_one_time(db, asset=row, tool_key=asset_registry.VOICE_CLONE_TOOL,
+                                                       model="smallest-clone", user_id=caller.user_id))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("voice clone charge failed for %s: %s", row["id"], e)
+    logger.info("Voice cloned for institute %s by %s: %s (asset %s, %s credits)", caller.institute_id, caller.user_id,
+                result["voice_id"], row["id"], charged)
+    return {"voice_id": result["voice_id"], "provider": "smallest", "display_name": display_name,
+            "asset_id": row["id"], "credits_charged": charged}
+
+
+@router.get("/voice/clones", summary="This institute's cloned voices")
+async def cloned_voices(caller: Caller = Depends(_caller), db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services.tutor import asset_registry
+    rows = [a for a in asset_registry.visible(db, institute_id=caller.institute_id, kind="voice") if not a["stock"]]
+    return {"available": smallest_available(), "voices": [
+        {"voice_id": a["external_id"], "name": a["display_name"], "status": a["status"], "asset_id": a["id"],
+         "provider": a["provider"]} for a in rows
     ]}
 
 

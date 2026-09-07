@@ -7,9 +7,9 @@ import math
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import json
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -623,6 +623,8 @@ TOOL_LABELS = {
     "tutor_live_minute": "Live AI Tutor: one minute of a voice lesson",
     "tutor_voice_prepare": "Live AI Tutor: prepare the teacher's voice for one slide (per language, one-time)",
     "tutor_avatar_minute": "Live AI Tutor: teacher avatar (premium), per lesson minute on top of the live minute",
+    "tutor_voice_clone": "Live AI Tutor: clone a teacher's voice (one-time, per voice)",
+    "tutor_avatar_create": "Live AI Tutor: create a custom teacher avatar (one-time, per avatar)",
 }
 
 
@@ -697,3 +699,111 @@ def super_put_tool_pricing(
     logger.info("tool pricing %s set by %s: flat=%s per_unit=%s", tool_key, current_user.user_id, flat, per_unit)
     tools = super_tool_pricing(db=db, current_user=current_user)["tools"]
     return next(t for t in tools if t["tool_key"] == tool_key)
+
+
+# ── Live AI Tutor asset registry (stock + per-institute voices and avatars) ──
+
+class TutorAssetCreate(BaseModel):
+    kind: str = Field(..., pattern="^(voice|avatar)$")
+    provider: str = Field(..., min_length=1, max_length=32)
+    external_id: str = Field(..., min_length=1, max_length=160)
+    display_name: str = Field(..., min_length=1, max_length=120)
+    # Blank = platform stock visible to every institute.
+    institute_id: Optional[str] = Field(default=None, max_length=255)
+    gender: Optional[str] = Field(default=None, max_length=16)
+    languages: Optional[List[str]] = None
+    preview_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TutorAssetPatch(BaseModel):
+    external_id: Optional[str] = Field(default=None, max_length=160)
+    display_name: Optional[str] = Field(default=None, max_length=120)
+    institute_id: Optional[str] = Field(default=None, max_length=255)
+    status: Optional[str] = Field(default=None, pattern="^(requested|processing|ready|failed|disabled)$")
+    gender: Optional[str] = Field(default=None, max_length=16)
+    languages: Optional[List[str]] = None
+    preview_url: Optional[str] = None
+    error: Optional[str] = None
+    notes: Optional[str] = None
+    # Fulfilling an institute's request charges the one-time fee unless false.
+    charge: bool = True
+
+
+@router.get("/tutor-assets", summary="Live AI Tutor: every registered voice and avatar (stock + institutes)")
+def super_tutor_assets(
+    kind: Optional[str] = None, institute_id: Optional[str] = None, status: Optional[str] = None,
+    stock_only: bool = False, limit: int = 500,
+    db: Session = Depends(db_dependency), current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.tutor import asset_registry
+    from ..services.tool_cost_estimator import ToolCostEstimator
+    pricing = ToolCostEstimator(db).get_tool_pricing()
+    fees = {k: float(pricing.get(k, {}).get("flat_base_credits") or 0)
+            for k in (asset_registry.VOICE_CLONE_TOOL, asset_registry.AVATAR_CREATE_TOOL)}
+    return {"assets": asset_registry.list_all(db, kind=kind, institute_id=institute_id, status=status,
+                                              stock_only=stock_only, limit=limit),
+            "one_time_credits": {"voice": fees[asset_registry.VOICE_CLONE_TOOL],
+                                 "avatar": fees[asset_registry.AVATAR_CREATE_TOOL]}}
+
+
+@router.post("/tutor-assets", summary="Register a stock (or institute-owned) voice/avatar by its vendor id")
+def super_tutor_asset_create(
+    body: TutorAssetCreate,
+    db: Session = Depends(db_dependency), current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.tutor import asset_registry
+    row = asset_registry.create(db, kind=body.kind, provider=body.provider, external_id=body.external_id.strip(),
+                                display_name=body.display_name.strip(), institute_id=body.institute_id or None,
+                                status="ready", gender=body.gender, languages=body.languages,
+                                preview_url=body.preview_url, requested_by=current_user.user_id, notes=body.notes,
+                                consent=bool(body.institute_id))
+    logger.info("tutor asset %s registered by %s (%s %s inst=%s)", row["id"], current_user.user_id, body.kind,
+                body.external_id, body.institute_id)
+    return row
+
+
+@router.patch("/tutor-assets/{asset_id}", summary="Fulfil, rename, re-home or disable a registered asset")
+def super_tutor_asset_patch(
+    asset_id: str, body: TutorAssetPatch,
+    db: Session = Depends(db_dependency), current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.tutor import asset_registry
+    current = asset_registry.get(db, asset_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    fields = {k: v for k, v in body.model_dump(exclude={"charge"}).items() if v is not None}
+    if "external_id" in fields:
+        fields["external_id"] = fields["external_id"].strip()
+    # Pasting a vendor id into a pending request fulfils it.
+    if fields.get("external_id") and current["status"] in ("requested", "processing", "failed") and "status" not in fields:
+        fields["status"] = "ready"
+    if fields.get("status") == "ready" and not (fields.get("external_id") or current.get("external_id")):
+        raise HTTPException(status_code=422, detail="A ready asset needs the vendor's id")
+    row = asset_registry.update(db, asset_id, **fields)
+    if row and body.charge and row["status"] == "ready" and current["status"] != "ready" and row["institute_id"]:
+        tool = asset_registry.AVATAR_CREATE_TOOL if row["kind"] == "avatar" else asset_registry.VOICE_CLONE_TOOL
+        try:
+            asset_registry.charge_one_time(db, asset=row, tool_key=tool,
+                                           model="spatius-avatar" if row["kind"] == "avatar" else "smallest-clone",
+                                           user_id=row.get("requested_by"))
+            row = asset_registry.get(db, asset_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("one-time charge for asset %s failed: %s", asset_id, e)
+    logger.info("tutor asset %s patched by %s: %s", asset_id, current_user.user_id, sorted(fields))
+    return row
+
+
+@router.delete("/tutor-assets/{asset_id}", summary="Delete a registered asset")
+def super_tutor_asset_delete(
+    asset_id: str,
+    db: Session = Depends(db_dependency), current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.tutor import asset_registry
+    if not asset_registry.delete(db, asset_id):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return {"deleted": asset_id}

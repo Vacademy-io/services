@@ -122,4 +122,21 @@ def resolve_settings(db: Session, *, package_id: str, institute_id: str) -> Tuto
             _apply(s, _extract(row[0]))
     except Exception:  # noqa: BLE001
         logger.warning("package tutor settings unreadable for %s", package_id, exc_info=True)
+    _enforce_registry(db, s, institute_id)
     return s
+
+
+def _enforce_registry(db: Session, s: TutorSettings, institute_id: str) -> None:
+    """A saved avatar must be a ready registry row the institute may see; a
+    voice registered to another institute is dropped to the provider default."""
+    from ..asset_registry import avatar_allowed, voice_blocked
+    try:
+        if s.avatar_provider != "none" and s.avatar_id:
+            if not avatar_allowed(db, institute_id=institute_id, provider=s.avatar_provider, avatar_id=s.avatar_id):
+                logger.info("tutor avatar %s not allowed for institute %s; ignoring", s.avatar_id, institute_id)
+                s.avatar_provider, s.avatar_id = "none", None
+        if s.tts_voice and voice_blocked(db, institute_id=institute_id, provider=s.tts_provider, voice_id=s.tts_voice):
+            logger.info("tutor voice %s not allowed for institute %s; ignoring", s.tts_voice, institute_id)
+            s.tts_voice = None
+    except Exception:  # noqa: BLE001
+        logger.warning("asset registry check failed for %s", institute_id, exc_info=True)

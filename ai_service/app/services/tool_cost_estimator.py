@@ -343,6 +343,23 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "audio_minutes",
         "params": {"min_credits": "0"},
     },
+    # Custom teacher assets, charged once to the institute (owner decision
+    # 2026-09-07): a cloned voice when the clone is made; an animated avatar
+    # when the request is fulfilled (Spatius Studio today, API later).
+    "tutor_voice_clone": {
+        "request_type": "tts_premium",
+        "flat_base_credits": Decimal("200"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "tutor_avatar_create": {
+        "request_type": "conversation",
+        "flat_base_credits": Decimal("1000"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "tutor_compile_slide": {
         "request_type": "content",
         "flat_base_credits": Decimal("2"),
