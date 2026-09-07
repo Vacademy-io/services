@@ -47,8 +47,7 @@ import {
 import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
 import { TutorCompileEstimateDialog } from './TutorCompileEstimateDialog';
 import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
-import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
-import { TeacherAvatarField } from '@/components/common/tutor/TeacherAvatarField';
+import { TeacherPresenceField } from '@/components/common/tutor/TeacherPresenceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 interface TutorModeTabProps {
@@ -629,21 +628,17 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             />
                         </div>
                     </div>
-                    <TeacherFaceField
-                        fileId={setting.teacherAvatarFileId || undefined}
-                        inheritedFileId={inherited.teacherAvatarFileId || undefined}
-                        teacherName={setting.teacherName || inherited.teacherName}
-                        onChange={(id) => update('teacherAvatarFileId', id)}
-                    />
-                    <TeacherAvatarField
+                    <TeacherPresenceField
                         fileId={setting.teacherAvatarFileId || undefined}
                         inheritedFileId={inherited.teacherAvatarFileId || undefined}
                         teacherName={setting.teacherName || inherited.teacherName}
                         provider={setting.avatarProvider}
                         avatarId={setting.avatarId}
                         inheritedAvatarId={inherited.avatarId}
-                        available={!!options?.avatar_available}
-                        onChange={(provider, avatarId) => {
+                        options={options}
+                        inheritable
+                        onFaceChange={(id) => update('teacherAvatarFileId', id)}
+                        onAvatarChange={(provider, avatarId) => {
                             update('avatarProvider', provider);
                             update('avatarId', avatarId);
                         }}

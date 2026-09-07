@@ -221,23 +221,65 @@ export interface TutorModeSetting {
     avatarId?: string;
 }
 
-export const createTutorAvatar = async (
+/** A registered teacher asset: platform stock (stock=true) or this institute's own. */
+export interface TutorAsset {
+    id: string;
+    kind: 'voice' | 'avatar';
+    provider: string;
+    external_id: string | null;
+    display_name: string;
+    status: 'requested' | 'processing' | 'ready' | 'failed' | 'disabled';
+    stock: boolean;
+    gender?: string | null;
+    languages?: string[];
+    preview_url?: string | null;
+    credits_charged?: number;
+    error?: string | null;
+    created_at?: string;
+}
+
+export interface TutorAvatarRequestStatus {
+    asset_id: string;
+    status: TutorAsset['status'];
+    avatar_id: string | null;
+    error: string | null;
+    display_name: string;
+    credits_charged: number;
+}
+
+/** Ask for a custom avatar built from the teacher's photo (consent confirmed in the UI). */
+export const requestTutorAvatar = async (
     fileId: string,
     name?: string
-): Promise<{ job_id: string; status: string }> => {
-    const res = await authenticatedAxiosInstance.post(`${BASE}/avatar/create`, {
-        file_id: fileId,
-        name,
-        consent: true,
-    });
+): Promise<TutorAvatarRequestStatus> => {
+    const res = await authenticatedAxiosInstance.post<TutorAvatarRequestStatus>(
+        `${BASE}/avatar/create`,
+        { file_id: fileId, name, consent: true }
+    );
+    optionsCache = null;
     return res.data;
 };
 
-export const getTutorAvatarJob = async (
-    jobId: string
-): Promise<{ job_id: string; status: string; avatar_id: string | null; error: string | null }> => {
-    const res = await authenticatedAxiosInstance.get(`${BASE}/avatar/jobs/${jobId}`);
+export const getTutorAvatarRequest = async (assetId: string): Promise<TutorAvatarRequestStatus> => {
+    const res = await authenticatedAxiosInstance.get<TutorAvatarRequestStatus>(
+        `${BASE}/avatar/assets/${assetId}`
+    );
+    if (res.data.status === 'ready') optionsCache = null;
     return res.data;
+};
+
+/** Voices and avatars this institute may use (platform stock + its own). */
+export const listTutorAssets = async (kind?: 'voice' | 'avatar'): Promise<TutorAsset[]> => {
+    const res = await authenticatedAxiosInstance.get<{ assets: TutorAsset[] }>(`${BASE}/assets`, {
+        params: kind ? { kind } : undefined,
+    });
+    return res.data.assets;
+};
+
+/** Stop using one of this institute's own voices or avatars. */
+export const disableTutorAsset = async (assetId: string): Promise<void> => {
+    await authenticatedAxiosInstance.delete(`${BASE}/assets/${assetId}`);
+    optionsCache = null;
 };
 
 /** Voice speed choices offered in both Tutor Mode cards. */
@@ -265,17 +307,19 @@ export const TUTOR_TTS_PROVIDERS: Array<{
 export const cloneTutorVoice = async (
     file: File,
     displayName: string
-): Promise<{ voice_id: string }> => {
+): Promise<{ voice_id: string; asset_id?: string; credits_charged?: number }> => {
     const form = new FormData();
     form.append('file', file);
     form.append('display_name', displayName);
-    const res = await authenticatedAxiosInstance.post<{ voice_id: string }>(
+    form.append('consent', 'true');
+    const res = await authenticatedAxiosInstance.post<{ voice_id: string; asset_id?: string; credits_charged?: number }>(
         `${BASE}/voice/clone`,
         form,
         {
             headers: { 'Content-Type': 'multipart/form-data' },
         }
     );
+    optionsCache = null;
     return res.data;
 };
 
@@ -419,7 +463,10 @@ export interface TutorVoiceOption {
     languages?: string[];
     age?: string | null;
     accent?: string | null;
+    /** This institute's own cloned voice (never another institute's). */
     cloned?: boolean;
+    stock?: boolean;
+    asset_id?: string;
 }
 
 export interface TutorModelOption {
@@ -436,6 +483,10 @@ export interface TutorOptions {
     smallest_available: boolean;
     /** The premium teacher avatar (Spatius) is configured on the server. */
     avatar_available?: boolean;
+    /** Avatars this institute may use: platform stock + its own (any status). */
+    avatars?: TutorAsset[];
+    /** Credit rates that matter on the settings cards. */
+    fees?: { voice: number; avatar: number; avatar_minute: number; live_minute: number };
 }
 
 let optionsCache: { at: number; value: TutorOptions } | null = null;

@@ -26,8 +26,7 @@ import {
     type TutorModeSetting,
     type TutorOptions,
 } from '@/services/tutor';
-import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
-import { TeacherAvatarField } from '@/components/common/tutor/TeacherAvatarField';
+import { TeacherPresenceField } from '@/components/common/tutor/TeacherPresenceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 const DEFAULTS: TutorModeSetting = {
@@ -304,19 +303,15 @@ export const TutorModeDefaultsCard: React.FC = () => {
                         </Select>
                     </div>
                 </div>
-                <TeacherFaceField
+                <TeacherPresenceField
                     fileId={value.teacherAvatarFileId || undefined}
                     teacherName={value.teacherName}
-                    onChange={(id) => update('teacherAvatarFileId', id ?? '')}
-                />
-                <TeacherAvatarField
-                    fileId={value.teacherAvatarFileId || undefined}
-                    teacherName={value.teacherName}
-                    provider={value.avatarProvider}
+                    provider={value.avatarProvider ?? 'none'}
                     avatarId={value.avatarId}
-                    available={!!options?.avatar_available}
-                    onChange={(provider, avatarId) => {
-                        update('avatarProvider', provider);
+                    options={options}
+                    onFaceChange={(id) => update('teacherAvatarFileId', id ?? '')}
+                    onAvatarChange={(provider, avatarId) => {
+                        update('avatarProvider', provider ?? 'none');
                         update('avatarId', avatarId);
                     }}
                 />
@@ -328,8 +323,11 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     <p className="text-xs text-neutral-600">
                         Upload a clean 5–15 second recording of the teacher speaking (mp3, wav, mp4
                         or webm, under 5 MB). Only upload a voice you have the person&apos;s
-                        permission to use. The cloned voice becomes the tutor voice for every course
-                        that inherits these defaults.
+                        permission to use. The cloned voice is private to this institute and becomes
+                        the tutor voice for every course that inherits these defaults.
+                        {options?.fees?.voice
+                            ? ` Charged once: ${options.fees.voice} credits per voice.`
+                            : ''}
                     </p>
                     <div className="flex flex-wrap items-end gap-2">
                         <div className="space-y-1">

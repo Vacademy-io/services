@@ -37,7 +37,7 @@ export const VoicePicker: React.FC<
             return ah - bh || a.name.localeCompare(b.name);
         };
         return [
-            { label: 'Cloned voices', items: voices.filter((v) => v.cloned) },
+            { label: 'Your voices', items: voices.filter((v) => v.cloned) },
             {
                 label: 'Female',
                 items: voices.filter((v) => !v.cloned && v.gender === 'female').sort(hindiFirst),
