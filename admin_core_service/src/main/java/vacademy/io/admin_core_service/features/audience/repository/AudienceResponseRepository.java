@@ -23,6 +23,16 @@ import java.util.Optional;
 @Repository
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
+    /**
+     * Bulk lead id -> display name and number, for screens that list leads they do not
+     * otherwise load. The AI call queue resolves a whole page at once; a per-row lookup
+     * would turn one page into fifty queries.
+     */
+    @Query(value = "SELECT ar.id, ar.parent_name, ar.parent_mobile FROM audience_response ar "
+            + "WHERE ar.id IN (:ids)", nativeQuery = true)
+    List<Object[]> findIdNameAndMobileByIds(@Param("ids") java.util.Collection<String> ids);
+
+
         /**
          * Find all leads for a specific campaign, INCLUDING soft-deleted ones.
          *

@@ -56,6 +56,8 @@ public final class AiCallQueueDTOs {
         private String statusReason;
         private String responseId;
         private String userId;
+        /** The lead's name from their CRM record. Null when the record has none. */
+        private String leadName;
         private String phoneNumber;
         private String campaignId;
         private String campaignName;

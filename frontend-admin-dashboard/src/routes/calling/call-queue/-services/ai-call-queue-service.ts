@@ -57,6 +57,8 @@ export interface QueueItem {
     statusReason?: string | null;
     responseId?: string | null;
     userId?: string | null;
+    /** The lead's name from their CRM record. */
+    leadName?: string | null;
     phoneNumber?: string | null;
     campaignId?: string | null;
     campaignName?: string | null;
