@@ -35,3 +35,15 @@ def test_avatar_minute_is_priced():
     row = DEFAULT_TOOL_PRICING["tutor_avatar_minute"]
     assert row["unit_field"] == "audio_minutes" and float(row["per_unit_credits"]) == 1.0
     assert sp.SPATIUS_USD_PER_MINUTE < 0.01
+
+
+def test_vendor_errors_in_a_200_body_are_failures(monkeypatch):
+    import httpx
+    from app.services.spatius_service import _payload, open_base_url
+    r = httpx.Response(200, json={"errors": [{"status": 404, "title": "Not Found", "detail": "Not Found"}]}, request=httpx.Request("GET", "https://x"))
+    with pytest.raises(RuntimeError) as ei:
+        _payload(r, "avatar job")
+    assert "Not Found" in str(ei.value)
+    ok = httpx.Response(200, json={"jobId": "j1", "status": "queued"}, request=httpx.Request("POST", "https://x"))
+    assert _payload(ok, "avatar creation")["jobId"] == "j1"
+    assert open_base_url() == "https://console.spatius.ai/v1/open"
