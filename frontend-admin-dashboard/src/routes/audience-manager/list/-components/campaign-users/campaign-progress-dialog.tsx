@@ -255,7 +255,7 @@ export function CampaignProgressDialog({
                     })}
                 </div>
 
-                {poll.isError && (
+                {(summary.isError || itemsQuery.isError) && (
                     <p className="text-caption text-warning-600">{t('error.pollPaused')}</p>
                 )}
                 {!finished && (
