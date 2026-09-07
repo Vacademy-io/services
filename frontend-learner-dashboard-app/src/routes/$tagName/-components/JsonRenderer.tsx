@@ -796,7 +796,11 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
                     placeholder={t("leadCollectionModal.phonePlaceholder")}
                     containerClass="!w-full"
                     inputClass="!w-full !h-11 !rounded-lg !border-catalogue-border !bg-catalogue-bg !text-catalogue-text-primary !text-sm"
-                    buttonClass="!rounded-s-lg !border-catalogue-border !bg-catalogue-bg"
+                    // No buttonClass: the flag button is absolutely positioned OVER the
+                    // input's left edge, so giving it an opaque background paints out the
+                    // input's border and rounded corner — the control then reads as two
+                    // detached boxes. The app's own .react-tel-input theming already gives
+                    // it the divider and radius.
                   />
                 ) : (
                   <input type={field.type} required={field.required} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
