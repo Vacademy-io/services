@@ -48,6 +48,7 @@ import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
 import { TutorCompileEstimateDialog } from './TutorCompileEstimateDialog';
 import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
+import { TeacherAvatarField } from '@/components/common/tutor/TeacherAvatarField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 interface TutorModeTabProps {
@@ -205,6 +206,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             generateImages: institute?.generateImages !== false,
             voicePace: typeof institute?.voicePace === 'number' ? institute.voicePace : 1,
             teacherAvatarFileId: institute?.teacherAvatarFileId || '',
+            avatarId: institute?.avatarProvider === 'spatius' ? institute?.avatarId || '' : '',
         }),
         [institute]
     );
@@ -632,6 +634,19 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                         inheritedFileId={inherited.teacherAvatarFileId || undefined}
                         teacherName={setting.teacherName || inherited.teacherName}
                         onChange={(id) => update('teacherAvatarFileId', id)}
+                    />
+                    <TeacherAvatarField
+                        fileId={setting.teacherAvatarFileId || undefined}
+                        inheritedFileId={inherited.teacherAvatarFileId || undefined}
+                        teacherName={setting.teacherName || inherited.teacherName}
+                        provider={setting.avatarProvider}
+                        avatarId={setting.avatarId}
+                        inheritedAvatarId={inherited.avatarId}
+                        available={!!options?.avatar_available}
+                        onChange={(provider, avatarId) => {
+                            update('avatarProvider', provider);
+                            update('avatarId', avatarId);
+                        }}
                     />
                     {setting.kbGrounding?.knowledge_base_id && (
                         <p className="text-xs text-neutral-500">

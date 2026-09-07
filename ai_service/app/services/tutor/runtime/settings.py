@@ -45,6 +45,10 @@ class TutorSettings:
     # {"knowledge_base_id": ..., "mode": "STRICT"|"BLENDED"} saved at creation
     # so recompiles from the course page stay grounded.
     kb_grounding: Optional[Dict[str, Any]] = None
+    # Premium teacher avatar: "none" | "spatius" and the vendor's avatar id
+    # (created from the teacher's face photo).
+    avatar_provider: str = "none"
+    avatar_id: Optional[str] = None
 
     @property
     def course_language(self) -> str:
@@ -91,6 +95,8 @@ def _apply(s: TutorSettings, d: Dict[str, Any]) -> None:
         except (TypeError, ValueError):
             pass
     v = pick("teacherAvatarFileId", "teacher_avatar_file_id"); s.teacher_avatar_file_id = str(v)[:255] if v else s.teacher_avatar_file_id
+    v = pick("avatarProvider", "avatar_provider"); s.avatar_provider = str(v) if v in ("none", "spatius") else s.avatar_provider
+    v = pick("avatarId", "avatar_id");   s.avatar_id = str(v)[:120] if v else s.avatar_id
     v = pick("kbGrounding", "kb_grounding")
     if isinstance(v, dict) and v.get("knowledge_base_id"):
         s.kb_grounding = {"knowledge_base_id": str(v["knowledge_base_id"]),

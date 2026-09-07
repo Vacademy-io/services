@@ -114,6 +114,7 @@ export type ToolKey =
     | 'tutor_compile_slide'
     | 'tutor_media_image'
     | 'tutor_voice_prepare'
+    | 'tutor_avatar_minute'
     // Voice lessons: one charge per started minute (V496)
     | 'tutor_live_minute'
     // One AI-written analysis per ASSESSMENT, charged once then free to

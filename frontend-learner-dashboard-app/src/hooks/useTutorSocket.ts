@@ -259,7 +259,7 @@ export function useTutorSocket(callbacks: Callbacks) {
     sendAsk: (text: string) => send({ type: "ask", text }),
     sendControl: (intent: "repeat" | "skip" | "slower" | "faster" | "doubt" | "pause" | "resume" | "done") =>
       send({ type: "control", intent }),
-    sendConfig: (cfg: { language?: "en" | "hi"; speak?: boolean; pace?: TutorPace }) => send({ type: "config", ...cfg }),
+    sendConfig: (cfg: { language?: "en" | "hi"; speak?: boolean; pace?: TutorPace; avatar?: boolean }) => send({ type: "config", ...cfg }),
     sendNextSlide: (slideId: string) => send({ type: "next_slide", slide_id: slideId }),
     sendAudioChunk: (base64: string) => send({ type: "audio_chunk", data: base64 }),
     sendAudioEnd: (mime?: string) => send({ type: "audio_end", mime: mime || "audio/webm" }),

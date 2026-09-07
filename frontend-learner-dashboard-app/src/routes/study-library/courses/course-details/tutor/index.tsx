@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { useSpatiusAvatar } from "@/hooks/useSpatiusAvatar";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorPace, type TutorStateEvent } from "@/hooks/useTutorSocket";
 import { Whiteboard } from "@/components/tutor/Whiteboard";
@@ -13,6 +14,7 @@ import { ListBullets } from "@phosphor-icons/react";
 import { TeacherPanel, type LessonStats, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
 import {
   endTutorSession,
+  getTutorAvatarToken,
   getTutorChapterSlides,
   startTutorSession,
   type TutorChapterSlide,
@@ -93,6 +95,14 @@ function TutorPage() {
   const [micOn, setMicOn] = useState(false);
   const [pace, setPace] = useState<TutorPace>("normal");
   const [language, setLanguage] = useState<"en" | "hi">("en");
+  // Premium teacher avatar (Spatius): mounted when the course has one and the learner keeps it on.
+  const avatar = useSpatiusAvatar();
+  const [avatarOn, setAvatarOn] = useState(true);
+  const avatarContainerRef = useRef<HTMLDivElement | null>(null);
+  const avatarBootedRef = useRef(false);
+  const avatarActive = voiceMode && avatarOn && avatar.ready && !avatar.failed;
+  const avatarActiveRef = useRef(false);
+  avatarActiveRef.current = avatarActive;
   // Narration sync: the sentence being spoken and the elements written for it.
   const [sentence, setSentence] = useState<number | null>(null);
   const [focusIds, setFocusIds] = useState<string[]>([]);
@@ -276,7 +286,9 @@ function TutorPage() {
         if (syncedRef.current && typeof seg.sentence === "number") revealSynced(seg.sentence);
         if (!seg.buf) continue;
         try {
-          await audioPlayer.playAudio(seg.buf);
+          // The avatar plays the audio itself, lips in sync; otherwise the speaker does.
+          if (avatarActiveRef.current) await avatar.speak(seg.buf);
+          else await audioPlayer.playAudio(seg.buf);
         } catch {
           /* autoplay blocked or decode error: keep going */
         }
@@ -295,7 +307,7 @@ function TutorPage() {
         }
       }
     }
-  }, [audioPlayer, revealTeacherText, completeTeacherText, revealSynced, flushReveal]);
+  }, [audioPlayer, revealTeacherText, completeTeacherText, revealSynced, flushReveal, avatar]);
   /** Everything the teacher has not "written" yet lands now (voice mode: once the audio has played). */
   const settleBoard = useCallback(() => {
     if (voiceMode && speakOn) {
@@ -315,11 +327,12 @@ function TutorPage() {
     queueRef.current = [];
     chunksRef.current = [];
     audioPlayer.stop();
+    avatar.interrupt();
     completeTeacherText();
     // A barge-in: whatever the narration had not written yet lands now.
     flushReveal();
     setRevealKey((k) => k + 1);
-  }, [audioPlayer, completeTeacherText, flushReveal]);
+  }, [audioPlayer, completeTeacherText, flushReveal, avatar]);
 
   // ── socket ──
   const socket = useTutorSocket({
@@ -563,6 +576,24 @@ function TutorPage() {
     }
   };
 
+  // The server meters the avatar only while the learner's device shows it.
+  useEffect(() => {
+    if (!boot?.avatar) return;
+    socket.sendConfig({ avatar: avatarActive });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarActive]);
+  // Audio contexts unlock on a tap: the first gesture also connects the avatar.
+  useEffect(() => {
+    if (!boot?.avatar || !avatar.ready) return;
+    const unlock = () => {
+      void avatar.activate();
+      window.removeEventListener("pointerdown", unlock, true);
+    };
+    window.addEventListener("pointerdown", unlock, true);
+    return () => window.removeEventListener("pointerdown", unlock, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boot?.avatar, avatar.ready]);
+
   // Voice mode: after the audio of a no-question concept (or a topic summary)
   // has finished, continue by itself. Any tap — the mic, Doubt, typing — changes
   // `awaiting`/`micOn`/`phase` and cancels the timer.
@@ -599,6 +630,21 @@ function TutorPage() {
       currentSlideRef.current = b.slide_id;
       sessionRef.current = b.tutor_session_id;
       socket.connect(b.socket_path);
+      // Premium avatar: fetch a session token and mount the face; the lesson
+      // carries on with plain audio if any step fails.
+      if (b.avatar && voiceMode && !avatarBootedRef.current) {
+        avatarBootedRef.current = true;
+        void (async () => {
+          try {
+            const tok = await getTutorAvatarToken(b.tutor_session_id);
+            const container = avatarContainerRef.current;
+            if (!container) return;
+            await avatar.mount({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token }, container);
+          } catch {
+            /* no avatar this lesson */
+          }
+        })();
+      }
     } catch (e: unknown) {
       if (seq !== bootSeq.current) return;
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -791,6 +837,9 @@ function TutorPage() {
               setPace(p);
               socket.sendConfig({ pace: p });
             }}
+            avatarContainerRef={boot?.avatar && voiceMode ? avatarContainerRef : undefined}
+            avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : avatarActive ? "on" : avatar.ready ? "off" : "loading") : undefined}
+            onToggleAvatar={() => setAvatarOn((v) => !v)}
             language={language}
             languages={boot?.languages ?? ["en"]}
             onLanguage={(l) => {

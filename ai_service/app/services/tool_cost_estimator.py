@@ -334,6 +334,15 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # Premium teacher avatar (Spatius): per started lesson minute while the
+    # avatar is on, on top of tutor_live_minute. Vendor ≈ $0.0072/min.
+    "tutor_avatar_minute": {
+        "request_type": "conversation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("1"),
+        "unit_field": "audio_minutes",
+        "params": {"min_credits": "0"},
+    },
     "tutor_compile_slide": {
         "request_type": "content",
         "flat_base_credits": Decimal("2"),

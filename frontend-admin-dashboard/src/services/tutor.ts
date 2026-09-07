@@ -216,7 +216,29 @@ export interface TutorModeSetting {
     voicePace?: number;
     /** Media file id of the teacher's face; blank = the built-in illustrated face. */
     teacherAvatarFileId?: string;
+    /** Premium: an animated teacher avatar (Spatius) built from the face photo. */
+    avatarProvider?: 'none' | 'spatius';
+    avatarId?: string;
 }
+
+export const createTutorAvatar = async (
+    fileId: string,
+    name?: string
+): Promise<{ job_id: string; status: string }> => {
+    const res = await authenticatedAxiosInstance.post(`${BASE}/avatar/create`, {
+        file_id: fileId,
+        name,
+        consent: true,
+    });
+    return res.data;
+};
+
+export const getTutorAvatarJob = async (
+    jobId: string
+): Promise<{ job_id: string; status: string; avatar_id: string | null; error: string | null }> => {
+    const res = await authenticatedAxiosInstance.get(`${BASE}/avatar/jobs/${jobId}`);
+    return res.data;
+};
 
 /** Voice speed choices offered in both Tutor Mode cards. */
 export const TUTOR_VOICE_PACES: Array<{ value: number; label: string }> = [
@@ -412,6 +434,8 @@ export interface TutorOptions {
     voices: Record<string, TutorVoiceOption[]>;
     models: TutorModelOption[];
     smallest_available: boolean;
+    /** The premium teacher avatar (Spatius) is configured on the server. */
+    avatar_available?: boolean;
 }
 
 let optionsCache: { at: number; value: TutorOptions } | null = null;

@@ -978,6 +978,17 @@ passed off as Hindi; a line whose translation is missing falls back to a canned 
 session language, never to the other language. Board text and MCQ options stay in the course
 language. Teacher bubbles are tracked per turn so overlapping turns never merge.
 
+Teacher avatar, premium (2026-09-07, owner picked Spatius over Simli): an animated likeness built
+from the teacher's face photo (`POST /tutor/v1/avatar/create`, consent confirmed by the institute;
+`GET /tutor/v1/avatar/jobs/{id}`; `services/spatius_service.py`, env `SPATIUS_API_KEY` /
+`SPATIUS_APP_ID` / `SPATIUS_CONSOLE_HOST`). Setting `avatarProvider` + `avatarId` on the institute
+or course. In a voice lesson the start response carries `avatar`, the learner app fetches a
+session token (`POST /tutor/v1/sessions/{id}/avatar-token`), loads `@spatius/avatarkit` on demand,
+renders the face on the device and feeds each spoken segment as 16 kHz PCM16 (`useSpatiusAvatar`,
+AvatarKit plays the audio in sync); barge-in maps to `interrupt()`. Charged `tutor_avatar_minute`
+(1 credit/min, vendor ≈ $0.0072/min) only while the device reports the avatar on (config frame
+`avatar`); learners can hide it. Dark until the keys are set.
+
 Still open (tracked, not silent):
 
 - **Video and PDF slides now compile from their own words** (`services/tutor/source_text.py`):

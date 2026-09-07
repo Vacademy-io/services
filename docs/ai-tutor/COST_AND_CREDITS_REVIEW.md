@@ -165,6 +165,14 @@ $1.40/h in voice alone) and it goes negative if Sarvam becomes the default voice
     in one language fall back to live synthesis for those lines; the cache fills itself from
     those lessons too, so the second learner at that pace is served from the cache.
 
+## 6b. Live minute and avatar add-on (7 September 2026)
+
+- `tutor_live_minute` → **2 credits** ($1.20 / hour, ₹111), set in the portal.
+- Premium teacher avatar (Spatius): `tutor_avatar_minute` **1 credit per lesson minute** while the
+  learner shows it; vendor overage ≈ $0.0072 per minute ($0.43 / hour) against $0.60 charged.
+  Custom avatar creation is $25 on the vendor's side per teacher (not yet passed on; decide whether
+  to charge a one-time `tutor_avatar_create`).
+
 ## 7. Ledger snapshot (last 7 days, all institutes)
 
 Credits deducted: conversation (tutor and chatbot) 14.1, content (compiles and copilot

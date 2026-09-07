@@ -622,6 +622,7 @@ TOOL_LABELS = {
     "tutor_media_image": "Live AI Tutor: one AI image on a whiteboard",
     "tutor_live_minute": "Live AI Tutor: one minute of a voice lesson",
     "tutor_voice_prepare": "Live AI Tutor: prepare the teacher's voice for one slide (per language, one-time)",
+    "tutor_avatar_minute": "Live AI Tutor: teacher avatar (premium), per lesson minute on top of the live minute",
 }
 
 

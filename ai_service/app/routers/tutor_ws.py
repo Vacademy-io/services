@@ -46,7 +46,8 @@ from ..services.tutor.runtime import prompts
 from ..services.tutor.runtime.revisit import fresh_check
 from ..services.tutor.runtime.summary import rewrite_rolling_summary
 from ..services.tutor import voice_cache
-from ..services.tutor.runtime.settings import TutorSettings
+from ..services.tutor.runtime.settings import TutorSettings, resolve_settings
+from ..services import spatius_service
 from ..services.tutor.slide_source import package_belongs_to_institute
 from ..services.voice_tts import (
     SARVAM_DEFAULT_FEMALE, SMALLEST_DEFAULT_VOICE, default_voice_for, sarvam_speaker, smallest_available,
@@ -214,7 +215,27 @@ def start_session(
         "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics],
         "progress": boot["pointer"].progress(lesson),
         "socket_path": f"/tutor/ws/{boot['tutor_session_id']}",
+        # Premium teacher avatar: the client asks for a session token when this is set.
+        "avatar": ({"provider": "spatius", "avatar_id": settings.avatar_id, "app_id": spatius_service.app_id()}
+                   if settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
+                   and payload.mode == "VOICE" else None),
     }
+
+
+@router.post("/v1/sessions/{tutor_session_id}/avatar-token", summary="Session token for the teacher avatar (Spatius, premium)")
+async def avatar_token(tutor_session_id: str, caller: Caller = Depends(_caller), db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    ts = db.get(TutorSession, tutor_session_id)
+    if ts is None or ts.user_id != caller.user_id or ts.status != "ACTIVE":
+        raise HTTPException(status_code=404, detail="Session not found")
+    pkg = svc.package_of_session(db, ts.package_session_id)
+    s = resolve_settings(db, package_id=pkg[0] if pkg else "", institute_id=ts.institute_id)
+    if not (s.avatar_provider == "spatius" and s.avatar_id and spatius_service.available()):
+        raise HTTPException(status_code=404, detail="This course has no teacher avatar")
+    try:
+        tok = await spatius_service.mint_session_token()
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {**tok, "avatar_id": s.avatar_id, "provider": "spatius"}
 
 
 @router.post("/v1/sessions/{tutor_session_id}/end", summary="End a tutor session (fallback for closed sockets)")
@@ -341,6 +362,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # still to ask, and the one being asked with its fresh check.
         revisit: Optional[Dict[str, Any]] = None
         revisited: set = set()
+        # The learner's device is rendering the premium avatar (config frame).
+        avatar_active = False
 
         def _summary_args() -> Dict[str, Any]:
             return {"tutor_session_id": tutor_session_id, "user_id": user_id, "institute_id": institute_id,
@@ -600,12 +623,16 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
 
         async def _meter() -> None:
             """Charge the first minute now, then one per minute; stop the
-            lesson politely when the institute cannot afford the next one."""
+            lesson politely when the institute cannot afford the next one.
+            The premium avatar adds its own per-minute charge while it is on."""
             minute = 0
             while True:
                 minute += 1
                 ok = await asyncio.to_thread(svc.bill_live_minute, tutor_session_id=tutor_session_id,
                                              institute_id=institute_id, user_id=user_id, minute_no=minute)
+                if avatar_active:
+                    await asyncio.to_thread(svc.bill_avatar_minute, tutor_session_id=tutor_session_id,
+                                            institute_id=institute_id, user_id=user_id, minute_no=minute)
                 if not ok:
                     await _cancel_current()
                     await _say(prompts.tpl("credits_end", lang), meta={"kind": "credits_end"})
@@ -1107,6 +1134,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             if t == "auth":
                 continue
             elif t == "config":
+                if isinstance(msg.get("avatar"), bool):
+                    avatar_active = msg["avatar"]
+                    svc.bump_telemetry(tutor_session_id, avatar_on=1 if avatar_active else 0)
                 new_pace = msg.get("pace")
                 if isinstance(new_pace, str) and new_pace in PACE_MULTIPLIER and new_pace != pace:
                     pace = new_pace

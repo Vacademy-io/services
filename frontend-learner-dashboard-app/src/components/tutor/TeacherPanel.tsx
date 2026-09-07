@@ -57,6 +57,10 @@ interface TeacherPanelProps {
   /** The teacher's speaking pace, chosen by the learner. */
   pace?: TutorPace;
   onPace?: (pace: TutorPace) => void;
+  /** Premium teacher avatar: the container the SDK renders into, its state, and a hide/show toggle. */
+  avatarContainerRef?: React.RefObject<HTMLDivElement | null>;
+  avatarState?: "loading" | "on" | "off" | "failed";
+  onToggleAvatar?: () => void;
   /** The lesson language and the ones the course allows switching to. */
   language?: "en" | "hi";
   languages?: Array<"en" | "hi">;
@@ -99,6 +103,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, compact, pace, onPace, stats, language, languages, onLanguage,
+  avatarContainerRef, avatarState, onToggleAvatar,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -137,6 +142,19 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         )}
       </div>
 
+      {avatarContainerRef && avatarState !== "failed" && (
+        <div className={`relative mt-2 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-900 ${avatarState === "on" || avatarState === "loading" ? "aspect-square w-full" : "h-0 border-0"}`}>
+          <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
+          {avatarState === "loading" && (
+            <p className="absolute inset-x-0 bottom-2 text-center text-xs text-neutral-300">Loading your teacher…</p>
+          )}
+        </div>
+      )}
+      {avatarContainerRef && avatarState !== "failed" && avatarState !== "loading" && onToggleAvatar && (
+        <button type="button" onClick={onToggleAvatar} className="mt-1 self-start text-xs text-neutral-500 underline-offset-2 hover:underline">
+          {avatarState === "on" ? "Hide the teacher's face" : "Show the teacher's face"}
+        </button>
+      )}
       {stats && stats.asked > 0 && (
         <div className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
           <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">

@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -567,7 +568,51 @@ async def tutor_options(
         ORDER BY display_order, provider, name
     """)).fetchall()
     models = [{"model_id": r[0], "name": r[1], "provider": r[2], "tier": r[3], "is_free": bool(r[4])} for r in rows]
-    return {"voices": voices, "models": models, "smallest_available": smallest_available()}
+    from ..services import spatius_service
+    return {"voices": voices, "models": models, "smallest_available": smallest_available(),
+            "avatar_available": spatius_service.available(), "avatar_provider": "spatius" if spatius_service.available() else None}
+
+
+# ── teacher avatar (Spatius, premium) ────────────────────────────────────────
+
+class AvatarCreateRequest(BaseModel):
+    # Media file id of the teacher's face photo (the Tutor Mode face field).
+    file_id: str = Field(..., min_length=1, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=80)
+    # The institute confirms it holds the person's consent to animate their likeness.
+    consent: bool = False
+
+
+@router.post("/avatar/create", summary="Create a teacher avatar (Spatius) from the teacher's face photo")
+async def avatar_create(payload: AvatarCreateRequest, caller: Caller = Depends(_caller)) -> Dict[str, Any]:
+    from ..services import spatius_service
+    from ..services.media_file_client import get_public_file_url
+    if not spatius_service.available():
+        raise HTTPException(status_code=503, detail="The teacher avatar is not configured on this server")
+    if not payload.consent:
+        raise HTTPException(status_code=400, detail="Confirm that the teacher has consented to an animated likeness")
+    try:
+        url = await get_public_file_url(payload.file_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"The face photo could not be resolved: {e}")
+    try:
+        job = await spatius_service.create_avatar(url, name=payload.name)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    logger.info("Avatar creation queued for institute %s by %s: job %s", caller.institute_id, caller.user_id, job.get("job_id"))
+    return {"job_id": job.get("job_id"), "status": job.get("status"), "provider": "spatius"}
+
+
+@router.get("/avatar/jobs/{job_id}", summary="Status of a teacher avatar creation job")
+async def avatar_job_status(job_id: str, caller: Caller = Depends(_caller)) -> Dict[str, Any]:
+    from ..services import spatius_service
+    if not spatius_service.available():
+        raise HTTPException(status_code=503, detail="The teacher avatar is not configured on this server")
+    try:
+        job = await spatius_service.avatar_job(job_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"job_id": job_id, "status": job.get("status"), "avatar_id": job.get("avatar_id"), "error": job.get("error"), "provider": "spatius"}
 
 
 # (tool pricing lives in super_admin.py — see /super-admin/v1/tool-pricing)

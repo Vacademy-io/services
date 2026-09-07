@@ -221,6 +221,22 @@ def preflight_live_session(db: Session, institute_id: str) -> Optional[str]:
     return None
 
 
+AVATAR_MINUTE_TOOL = "tutor_avatar_minute"
+
+
+def bill_avatar_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int) -> None:
+    """The premium teacher avatar: one more charge per lesson minute while it
+    is on (idempotent per session+minute), with the vendor's cost recorded."""
+    from ...spatius_service import SPATIUS_USD_PER_MINUTE
+    record_tool_billing(
+        tool_key=AVATAR_MINUTE_TOOL, tool_params={"audio_minutes": 1}, request_type=RequestType.CONVERSATION,
+        model="spatius-avatar", institute_id=institute_id, user_id=user_id, user_role="STUDENT",
+        request_id=tutor_session_id, idempotency_key=f"tutor_avatar:{tutor_session_id}:{minute_no}",
+        provider_cost_usd=SPATIUS_USD_PER_MINUTE, seconds=60,
+    )
+    bump_telemetry(tutor_session_id, avatar_minutes=1)
+
+
 def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int) -> bool:
     """Charge minute `minute_no` (1-based; idempotent per session+minute) and
     report whether the institute can still afford the next one."""

@@ -55,7 +55,22 @@ export interface TutorStartResponse {
   topics: Array<{ id: string; title: string; concepts: number }>;
   progress: { done: number; total: number; percent: number };
   socket_path: string;
+  /** Premium teacher avatar for this course (voice lessons only). */
+  avatar?: { provider: "spatius"; avatar_id: string; app_id: string } | null;
 }
+
+export interface TutorAvatarToken {
+  provider: "spatius";
+  session_token: string;
+  expires_at: number;
+  app_id: string;
+  avatar_id: string;
+}
+
+export const getTutorAvatarToken = async (tutorSessionId: string): Promise<TutorAvatarToken> => {
+  const res = await authenticatedAxiosInstance.post<TutorAvatarToken>(`${BASE}/sessions/${tutorSessionId}/avatar-token`, {});
+  return res.data;
+};
 
 export const getTutorAvailability = async (
   packageId: string,

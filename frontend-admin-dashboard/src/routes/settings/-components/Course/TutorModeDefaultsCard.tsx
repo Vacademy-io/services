@@ -27,6 +27,7 @@ import {
     type TutorOptions,
 } from '@/services/tutor';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
+import { TeacherAvatarField } from '@/components/common/tutor/TeacherAvatarField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 const DEFAULTS: TutorModeSetting = {
@@ -307,6 +308,17 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     fileId={value.teacherAvatarFileId || undefined}
                     teacherName={value.teacherName}
                     onChange={(id) => update('teacherAvatarFileId', id ?? '')}
+                />
+                <TeacherAvatarField
+                    fileId={value.teacherAvatarFileId || undefined}
+                    teacherName={value.teacherName}
+                    provider={value.avatarProvider}
+                    avatarId={value.avatarId}
+                    available={!!options?.avatar_available}
+                    onChange={(provider, avatarId) => {
+                        update('avatarProvider', provider);
+                        update('avatarId', avatarId);
+                    }}
                 />
                 <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
                     <p className="flex items-center gap-2 text-sm font-medium text-neutral-800">
