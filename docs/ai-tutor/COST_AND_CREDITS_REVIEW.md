@@ -148,9 +148,13 @@ $1.40/h in voice alone) and it goes negative if Sarvam becomes the default voice
   played by every lesson. Only the model-written lines of a conversation (verdicts, doubt
   answers) and the greeting with the learner's name are synthesised live. The audio is
   identical — same engine, voice and pace — so there is no quality change.
-  - Charged once: `tutor_voice_prepare`, **8 credits per slide per language** (about 2,000
-    characters, $0.05 on Smallest), shown in the estimate dialog as "to prepare the teacher's
-    voice once".
+  - Charged once: `tutor_voice_prepare`, **15 credits per slide per language**. Measured on the
+    first prepared slide: 54 English and 49 Hindi segments, about 5,000 characters per language,
+    $0.13 of Smallest audio per language (a 40% margin at 15 credits; 8 would have lost money).
+    Shown in the estimate dialog as "to prepare the teacher's voice once".
+  - Verified on prod (7 Sep): a lesson on the prepared slide played 6 prepared segments at $0 and
+    synthesised 5 live ones (the greeting with the learner's name, the reaction to their guess,
+    the remediation) for $0.017 — the split the model predicts.
   - Effect on a one-hour lesson (Smallest voice): live synthesis drops from ~36,000 characters
     to roughly 6,000–9,000 (verdicts and doubts), i.e. from ~$0.90 to **$0.15–0.25 per hour**;
     the whole hour costs us **$0.25–0.40** against $1.80 charged. That headroom is what allows

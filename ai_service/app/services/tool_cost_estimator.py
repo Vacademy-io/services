@@ -323,11 +323,13 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # One strong-model compile call per slide, charged as max(flat, actual).
     # Reuses request_type 'content' so no ai_token_usage CHECK change is needed.
     # Prepared voice: every spoken line of a compiled slide synthesised once
-    # per language (cost review 2026-09-07) — about 2,000 characters, so the
-    # vendor cost is ~$0.05 on Smallest; charged 8 credits per slide per language.
+    # per language (cost review 2026-09-07). Measured on prod: ~5,000
+    # characters per slide per language (narration, recap, questions, hints,
+    # predict prompts and the fixed lines) ≈ $0.13 on Smallest; charged 15
+    # credits per slide per language, one time.
     "tutor_voice_prepare": {
         "request_type": "tts_premium",
-        "flat_base_credits": Decimal("8"),
+        "flat_base_credits": Decimal("15"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
         "params": {},
