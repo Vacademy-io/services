@@ -165,7 +165,11 @@ public class SubscriptionService {
         try {
             return planChangeService.summarise(plan, instituteId, packageSessionIds);
         } catch (Exception e) {
-            log.warn("Could not resolve plan-change eligibility for plan {}: {}", plan.getId(), e.getMessage());
+            // ERROR with the stack trace, deliberately: degrading to "no switching offered"
+            // makes a genuine failure look identical to "correctly not eligible", and that
+            // ambiguity has already cost a debugging session. The card still renders.
+            log.error("Could not resolve plan-change eligibility for plan {} (institute {}) — "
+                    + "reporting not-eligible", plan.getId(), instituteId, e);
             return new PlanChangeService.PlanChangeSummary(false, null);
         }
     }
