@@ -385,9 +385,17 @@ public class AiCallQueueService {
             // not finished, and defaulting to the full history buries it.
             rows = repository.findActive(instituteId, run, pageable);
         } else if (ALL_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findHistory(instituteId, null, run, pageable);
+            rows = run == null
+                    ? repository.findByInstituteIdOrderByCreatedAtDesc(instituteId, pageable)
+                    : repository.findByInstituteIdAndSourceRefOrderByCreatedAtDesc(
+                            instituteId, run, pageable);
         } else {
-            rows = repository.findHistory(instituteId, status.toUpperCase(), run, pageable);
+            String s = status.toUpperCase();
+            rows = run == null
+                    ? repository.findByInstituteIdAndStatusOrderByCreatedAtDesc(
+                            instituteId, s, pageable)
+                    : repository.findByInstituteIdAndStatusAndSourceRefOrderByCreatedAtDesc(
+                            instituteId, s, run, pageable);
         }
 
         // One snapshot and one ordered id list for the whole page — see
