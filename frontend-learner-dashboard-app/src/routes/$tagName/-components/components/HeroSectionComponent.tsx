@@ -456,7 +456,21 @@ const HeroSectionPlaceholder: React.FC<{
 
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
-      navigate({ to: button.target });
+      // A bare "#anchor" target is an in-page jump, not a route. navigate()
+      // pushes it as a PATH, so the URL gains the hash and the visitor stays
+      // exactly where they were — which is what made the hero's "Explore our
+      // courses" button appear to do nothing. Scroll it ourselves, the same
+      // way CatalogueLink handles a pure anchor. Fall through to navigate()
+      // when the element is absent, so a real route still routes.
+      const target = button.target.trim();
+      if (target.startsWith("#")) {
+        const el = document.getElementById(target.slice(1));
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+      navigate({ to: target });
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {
@@ -834,7 +848,21 @@ const HeroSectionWithState: React.FC<{
 
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
-      navigate({ to: button.target });
+      // A bare "#anchor" target is an in-page jump, not a route. navigate()
+      // pushes it as a PATH, so the URL gains the hash and the visitor stays
+      // exactly where they were — which is what made the hero's "Explore our
+      // courses" button appear to do nothing. Scroll it ourselves, the same
+      // way CatalogueLink handles a pure anchor. Fall through to navigate()
+      // when the element is absent, so a real route still routes.
+      const target = button.target.trim();
+      if (target.startsWith("#")) {
+        const el = document.getElementById(target.slice(1));
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+      navigate({ to: target });
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {
