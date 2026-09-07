@@ -1811,6 +1811,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <LeadFormEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productCourseGrid':
             return <ProductCourseGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'courseShowcase':
+            return <CourseShowcaseEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
             return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'logoCloud':
@@ -5253,6 +5255,102 @@ const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
                     placeholder=".my-band { background: var(--primary-50); }"
                 />
             </div>
+        </div>
+    );
+};
+
+/**
+ * Curated course strip. `productCourseGrid` always renders the WHOLE catalogue
+ * with filters; this one shows a chosen few, so the only real decisions are
+ * where the courses come from and how many.
+ */
+const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const SOURCES: Array<{ id: string; label: string; hint: string }> = [
+        { id: 'newest', label: 'Newest', hint: 'The most recently created courses.' },
+        { id: 'onSale', label: 'On sale', hint: 'Only courses with a discount (a struck-through price).' },
+        { id: 'tag', label: 'By tag', hint: 'Courses carrying the tag you type below.' },
+        { id: 'picked', label: 'Hand-picked', hint: 'Exactly the course IDs you list, in that order.' },
+    ];
+    const source = props.source || 'newest';
+
+    return (
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <Label className="text-xs">Title</Label>
+                <Input value={props.title || ''} placeholder="Hot right now"
+                    onChange={(e) => updateProp('title', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label className="text-xs">Subtitle</Label>
+                <Input value={props.subtitle || ''} placeholder="Optional line under the title"
+                    onChange={(e) => updateProp('subtitle', e.target.value)} />
+            </div>
+
+            <div>
+                <Label className="text-xs">Which courses</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {SOURCES.map((s) => (
+                        <button key={s.id} onClick={() => updateProp('source', s.id)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${source === s.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
+                <p className="mt-1 text-caption text-gray-400">
+                    {SOURCES.find((s) => s.id === source)?.hint}
+                </p>
+            </div>
+
+            {source === 'tag' && (
+                <div className="space-y-2">
+                    <Label className="text-xs">Tag</Label>
+                    <Input value={props.tag || ''} placeholder="e.g. 2 year old"
+                        onChange={(e) => updateProp('tag', e.target.value)} />
+                    <p className="text-caption text-gray-400">
+                        Must match the course&apos;s tag exactly (capitalisation is ignored).
+                    </p>
+                </div>
+            )}
+
+            {source === 'picked' && (
+                <div className="space-y-2">
+                    <Label className="text-xs">Course IDs</Label>
+                    <Input value={(props.courseIds || []).join(', ')}
+                        placeholder="id-one, id-two, id-three"
+                        onChange={(e) => updateProp('courseIds',
+                            e.target.value.split(',').map((v: string) => v.trim()).filter(Boolean))} />
+                    <p className="text-caption text-gray-400">Comma separated. Shown in the order you list them.</p>
+                </div>
+            )}
+
+            <div>
+                <Label className="text-xs">How many to show</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {[2, 3, 4, 6, 8].map((n) => (
+                        <button key={n} onClick={() => updateProp('limit', n)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${(props.limit || 3) === n ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{n}</button>
+                    ))}
+                </div>
+            </div>
+
+            <div>
+                <Label className="text-xs">Layout</Label>
+                <div className="mt-1 flex flex-wrap gap-1">
+                    {[{ id: 'row', label: '3 across' }, { id: 'grid', label: '4 across' }].map((l) => (
+                        <button key={l.id} onClick={() => updateProp('layout', l.id)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${(props.layout || 'row') === l.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{l.label}</button>
+                    ))}
+                </div>
+            </div>
+
+            <p className="rounded bg-gray-50 px-2 py-1.5 text-caption text-gray-500">
+                Prices, discount badges and images come live from the course catalogue —
+                nothing to keep in sync here. An empty result hides the whole section.
+            </p>
         </div>
     );
 };

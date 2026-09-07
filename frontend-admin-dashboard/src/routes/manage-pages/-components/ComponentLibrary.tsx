@@ -71,6 +71,7 @@ const COMPONENT_GROUPS: { title: string; keys: string[] }[] = [
             'productPageOffer',
             'courseCatalog',
             'productCourseGrid',
+            'courseShowcase',
             'bookCatalogue',
             'pricingTable',
             'cartComponent',

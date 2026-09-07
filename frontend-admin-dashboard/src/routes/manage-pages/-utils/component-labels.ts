@@ -23,6 +23,7 @@ export const COMPONENT_LABELS: Record<string, string> = {
     productPageOffer: 'Product Page Offer',
     productCourseGrid: 'Course Grid (full catalogue)',
     mediaShowcase: 'Media Showcase',
+    courseShowcase: 'Course showcase',
     statsHighlights: 'Stats',
     testimonialSection: 'Testimonials',
     cartComponent: 'Cart',
@@ -84,6 +85,7 @@ export const COMPONENT_DESCRIPTIONS: Record<string, string> = {
     // ── Persuasion ───────────────────────────────────────────────────────────
     featureGrid: 'Short “why us” points as icon cards',
     detailBlocks: 'One long block per programme — what it covers and who it is for',
+    courseShowcase: 'A few chosen courses — newest, on sale, by tag, or hand-picked',
     statsHighlights: 'A row of big numbers (learners, pass rate, years)',
     testimonialSection: 'Quotes from learners or parents',
     logoCloud: 'A row of partner or school logos',
