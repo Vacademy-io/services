@@ -333,12 +333,16 @@ function QueueRow({
     cancelling: boolean;
 }) {
     const waiting = item.status === 'QUEUED';
+    const heldUntil =
+        item.notBefore && new Date(item.notBefore).getTime() > Date.now()
+            ? new Date(item.notBefore)
+            : null;
     return (
         <TableRow>
             {/* Position is per LANE, not per page — an institute drains at its own rate
                 regardless of what other institutes have queued. */}
             <TableCell className="text-sm text-neutral-500">
-                {waiting && item.aheadInLane != null ? item.aheadInLane + 1 : '—'}
+                {waiting && !heldUntil && item.aheadInLane != null ? item.aheadInLane + 1 : '—'}
             </TableCell>
             {/* Name first; the number is the subtitle. Showing only a number made the
                 column read as empty to anyone scanning for a person. */}
@@ -384,8 +388,17 @@ function QueueRow({
                     )}
                 </div>
             </TableCell>
+            {/* A held row is not simply "waiting its turn" — it is parked until a
+                specific time. Showing only an ETA made a deliberate hold look like a
+                stalled queue. */}
             <TableCell className="text-sm text-neutral-600">
-                {waiting && item.etaMinutes != null ? formatEta(item.etaMinutes) : '—'}
+                {!waiting
+                    ? '—'
+                    : heldUntil
+                      ? `Resumes ${heldUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : item.etaMinutes != null
+                        ? formatEta(item.etaMinutes)
+                        : '—'}
             </TableCell>
             <TableCell>
                 {waiting && (

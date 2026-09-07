@@ -14,7 +14,8 @@
         "waitingAt": "#{{position}} in line",
         "nextUp": "Next up",
         "cancelled_queue": "Cancelled",
-        "expired": "Expired"
+        "expired": "Expired",
+        "held": "Waiting"
     },
     "header": {
         "allFinished_zero": "انتهت جميع المكالمات ({{count}})",
@@ -44,7 +45,8 @@
         "defaultLeadName": "عميل محتمل",
         "duration": "{{minutes}} د {{seconds}} ث",
         "droppedNotice_one": "{{count}} lead will not be called (cancelled or expired).",
-        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired)."
+        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired).",
+        "resumesAt": "Resumes {{time}}"
     },
     "error": {
         "pollPaused": "تم إيقاف التحديثات المباشرة مؤقتًا (تتم إعادة المحاولة) — المكالمات مستمرة في العمل من جهة الخادم."

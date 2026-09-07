@@ -202,12 +202,21 @@ export function CampaignProgressDialog({
                         // it has been handed over at all, the call log says what the call
                         // then did. A DIALED queue row never moves again on its own.
                         const waiting = r.status === 'QUEUED' || r.status === 'DISPATCHING';
+                        // A row can be at the head of the line AND still held — out of
+                        // hours, out of credits, or too soon after the last call to this
+                        // lead. Labelling that "Next up" reads as "about to dial" and
+                        // makes a deliberate hold look like a stall.
+                        const heldUntil =
+                            r.notBefore && new Date(r.notBefore).getTime() > Date.now()
+                                ? new Date(r.notBefore)
+                                : null;
                         const c = waiting
                             ? {
-                                  label:
-                                      r.aheadInLane != null && r.aheadInLane > 0
-                                          ? t('status.waitingAt', { position: r.aheadInLane + 1 })
-                                          : t('status.nextUp'),
+                                  label: heldUntil
+                                      ? t('status.held')
+                                      : r.aheadInLane != null && r.aheadInLane > 0
+                                        ? t('status.waitingAt', { position: r.aheadInLane + 1 })
+                                        : t('status.nextUp'),
                                   cls: 'bg-neutral-100 text-neutral-600',
                                   live: false,
                               }
@@ -219,7 +228,17 @@ export function CampaignProgressDialog({
                                 }
                               : chip(r.callStatus ?? r.status);
                         const sub = waiting
-                            ? formatEta(r.etaMinutes)
+                            ? // The REASON first when there is one: it is the difference
+                              // between "the queue is stuck" and "we are leaving a gap
+                              // before calling this person again".
+                              heldUntil
+                                ? `${r.statusReason ?? ''} ${t('list.resumesAt', {
+                                      time: heldUntil.toLocaleTimeString([], {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                      }),
+                                  })}`.trim()
+                                : formatEta(r.etaMinutes)
                             : r.statusReason
                               ? r.statusReason
                               : r.callDurationSeconds

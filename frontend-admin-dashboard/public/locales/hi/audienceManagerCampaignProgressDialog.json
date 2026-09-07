@@ -14,7 +14,8 @@
         "waitingAt": "#{{position}} in line",
         "nextUp": "Next up",
         "cancelled_queue": "Cancelled",
-        "expired": "Expired"
+        "expired": "Expired",
+        "held": "Waiting"
     },
     "header": {
         "allFinished_one": "सभी {{count}} कॉल पूरी हो गई",
@@ -32,7 +33,8 @@
         "defaultLeadName": "लीड",
         "duration": "{{minutes}} मिनट {{seconds}} सेकंड",
         "droppedNotice_one": "{{count}} lead will not be called (cancelled or expired).",
-        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired)."
+        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired).",
+        "resumesAt": "Resumes {{time}}"
     },
     "error": {
         "pollPaused": "लाइव अपडेट रुक गए हैं (फिर से कोशिश की जा रही है) — कॉल सर्वर पर चलती रहती हैं।"

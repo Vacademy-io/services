@@ -110,6 +110,8 @@ export interface BulkRunItem {
     agentName?: string | null;
     status: string;
     statusReason?: string | null;
+    /** Set while the item is held — out of hours, no credits, or too soon to re-call. */
+    notBefore?: string | null;
     /** Place in this institute's lane. Only set while still waiting. */
     aheadInLane?: number | null;
     etaMinutes?: number | null;

@@ -98,8 +98,14 @@ public class AiCallQueueDrainJob {
     /** How long an institute that just hit its daily cap is left alone. */
     private static final Duration DAILY_CAP_BACKOFF = Duration.ofHours(1);
 
-    /** How long an item waits after being refused for being too close to the last call. */
-    private static final Duration RECALL_GAP_BACKOFF = Duration.ofMinutes(20);
+    /**
+     * How long an item waits after being refused for being too close to the last call.
+     *
+     * <p>Short on purpose: the gap it is waiting out is measured in seconds, so parking
+     * the item for twenty minutes turned a one-minute pause into a twenty-minute stall
+     * and made a healthy queue look broken.
+     */
+    private static final Duration RECALL_GAP_BACKOFF = Duration.ofSeconds(90);
 
     /** How long an institute with no credits is left alone. */
     private static final Duration NO_CREDITS_BACKOFF = Duration.ofMinutes(15);

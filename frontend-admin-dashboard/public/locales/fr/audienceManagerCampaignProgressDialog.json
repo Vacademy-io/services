@@ -14,7 +14,8 @@
         "waitingAt": "#{{position}} in line",
         "nextUp": "Next up",
         "cancelled_queue": "Cancelled",
-        "expired": "Expired"
+        "expired": "Expired",
+        "held": "Waiting"
     },
     "header": {
         "allFinished_one": "Le {{count}} appel est terminé",
@@ -35,7 +36,8 @@
         "defaultLeadName": "Prospect",
         "duration": "{{minutes}} min {{seconds}} s",
         "droppedNotice_one": "{{count}} lead will not be called (cancelled or expired).",
-        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired)."
+        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired).",
+        "resumesAt": "Resumes {{time}}"
     },
     "error": {
         "pollPaused": "Mises à jour en direct suspendues (nouvelle tentative en cours) — les appels continuent de se dérouler côté serveur."

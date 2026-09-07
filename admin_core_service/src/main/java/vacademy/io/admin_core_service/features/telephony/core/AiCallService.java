@@ -85,12 +85,18 @@ public class AiCallService {
     private int globalMaxCallsPerDay;
 
     /**
-     * Minimum minutes between two AI calls to the same lead, for automation and bulk.
-     * 0 disables it. Deliberately far larger than the 30-second duplicate window, which
-     * exists to collapse an accidental double dispatch rather than to pace a lead's day.
+     * Minimum SECONDS between two AI calls to the same lead, for automation and bulk.
+     * 0 disables it.
+     *
+     * <p>Seconds rather than minutes because the useful range turned out to start below
+     * one: an hour was picked as a "sensible pacing" default and immediately parked a
+     * legitimate run for eighteen minutes, because a queue naturally re-enqueues the
+     * same lead far sooner than a human would. This is a guard against dialling someone
+     * twice in the same breath, not a policy about how often a lead may be contacted —
+     * the per-lead daily cap is what bounds that.
      */
-    @org.springframework.beans.factory.annotation.Value("${telephony.ai.min-recall-gap-minutes:60}")
-    private int minRecallGapMinutes;
+    @org.springframework.beans.factory.annotation.Value("${telephony.ai.min-recall-gap-seconds:60}")
+    private int minRecallGapSeconds;
 
     /**
      * Striped per-lead locks so the dedup check + INITIATED insert are atomic for a
@@ -301,13 +307,13 @@ public class AiCallService {
         // Manual keeps its exemption, as with every other throttle here: a person who
         // clicks Call has just decided this lead should be rung now, and silently
         // refusing them is the failure mode this guard set keeps producing.
-        if (!mock && trigger.enforcesPerLeadDailyCap() && minRecallGapMinutes > 0) {
+        if (!mock && trigger.enforcesPerLeadDailyCap() && minRecallGapSeconds > 0) {
             java.sql.Timestamp since = java.sql.Timestamp.from(
-                    Instant.now().minus(Duration.ofMinutes(minRecallGapMinutes)));
+                    Instant.now().minus(Duration.ofSeconds(minRecallGapSeconds)));
             if (callLogRepo.countOutboundToLeadSince(
                     req.getInstituteId(), userId, provider, since) > 0) {
-                log.info("AI call skipped: lead {} was called within the last {} min",
-                        userId, minRecallGapMinutes);
+                log.info("AI call skipped: lead {} was called within the last {}s",
+                        userId, minRecallGapSeconds);
                 return AiCallResponseDTO.builder()
                         .status("SKIPPED_RECALL_GAP")
                         .dispatched(false)

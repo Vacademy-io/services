@@ -14,7 +14,8 @@
         "waitingAt": "#{{position}} in line",
         "nextUp": "Next up",
         "cancelled_queue": "Cancelled",
-        "expired": "Expired"
+        "expired": "Expired",
+        "held": "Waiting"
     },
     "header": {
         "allFinished_one": "All {{count}} call finished",
@@ -32,7 +33,8 @@
         "defaultLeadName": "Lead",
         "duration": "{{minutes}}m {{seconds}}s",
         "droppedNotice_one": "{{count}} lead will not be called (cancelled or expired).",
-        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired)."
+        "droppedNotice_other": "{{count}} leads will not be called (cancelled or expired).",
+        "resumesAt": "Resumes {{time}}"
     },
     "error": {
         "pollPaused": "Live updates paused (retrying) — the calls keep running server-side."
