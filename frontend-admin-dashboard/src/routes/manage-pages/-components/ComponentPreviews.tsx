@@ -1603,6 +1603,44 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
                 </div>
             );
         }
+        case 'courseShowcase': {
+            // Curated strip: no filter row, and only `limit` cards — the two
+            // things that distinguish it from productCourseGrid at a glance.
+            const n = Math.min(Math.max(Number(props.limit) || 3, 1), 8);
+            const across = props.layout === 'grid' ? 4 : 3;
+            const sourceLabel: Record<string, string> = {
+                newest: 'Newest', onSale: 'On sale', tag: `Tag: ${props.tag || '—'}`, picked: 'Hand-picked',
+            };
+            return (
+                <div className="bg-catalogue-bg-elevated px-8 py-6">
+                    <div className="mb-1 text-center text-lg font-semibold text-neutral-800">
+                        {props.title || 'Course showcase'}
+                    </div>
+                    {props.subtitle && (
+                        <div className="mb-3 text-center text-xs text-neutral-500">{props.subtitle}</div>
+                    )}
+                    <div className="mb-4 text-center">
+                        <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-caption font-medium text-blue-600">
+                            {sourceLabel[props.source || 'newest']} · {n}
+                        </span>
+                    </div>
+                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${across}, 1fr)` }}>
+                        {Array.from({ length: Math.min(n, across) }).map((_, i) => (
+                            <div key={i} className="overflow-hidden rounded-xl border border-neutral-200 bg-catalogue-bg-elevated">
+                                <div className="flex h-24 items-center justify-center bg-neutral-100 text-xs text-neutral-300">
+                                    {t('dispatcher.courseImage')}
+                                </div>
+                                <div className="space-y-2 p-3">
+                                    <div className="h-3 w-3/4 rounded bg-neutral-200" />
+                                    <div className="h-2 w-1/2 rounded bg-neutral-100" />
+                                    <div className="h-6 w-full rounded bg-neutral-200" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
         case 'productCourseGrid': {
             const cols = props.columns || 3;
             return (

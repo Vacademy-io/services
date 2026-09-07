@@ -170,6 +170,21 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    courseShowcase: {
+        type: 'courseShowcase',
+        enabled: true,
+        props: {
+            title: 'New courses',
+            subtitle: '',
+            // 'newest' | 'onSale' | 'tag' | 'picked' — what fills the strip.
+            source: 'newest',
+            tag: '',
+            courseIds: [],
+            limit: 3,
+            layout: 'row',
+        },
+    },
+
     statsHighlights: {
         type: 'statsHighlights',
         enabled: true,

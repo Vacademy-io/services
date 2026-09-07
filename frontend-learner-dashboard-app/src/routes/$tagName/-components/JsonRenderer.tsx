@@ -59,6 +59,7 @@ import { FooterComponent } from "./components/FooterComponent";
 import { HeroSectionComponent } from "./components/HeroSectionComponent";
 import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
+import { CourseShowcaseComponent } from "./components/CourseShowcaseComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
 import { CartComponent } from "./components/CartComponent";
 import { BuyRentSectionComponent } from "./components/BuyRentSectionComponent";
@@ -216,6 +217,17 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <MediaShowcaseComponent key={id} {...props} />;
       case "statsHighlights":
         return <StatsHighlightsComponent key={id} {...props} />;
+      case "courseShowcase":
+        // Curated strip (new / on sale / one tag / hand-picked). Unlike
+        // productCourseGrid this shows a LIMITED, chosen set — no filters.
+        return (
+          <CourseShowcaseComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+          />
+        );
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
       case "cartComponent":
