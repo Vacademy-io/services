@@ -50,6 +50,8 @@ export interface QueueItem {
     callTrigger?: string | null;
     priority?: number;
     sourceRef?: string | null;
+    /** Campaign name behind a BULK row — what makes a specific run findable here. */
+    sourceName?: string | null;
     status: QueueStatus;
     /** Why it ended where it did — the only explanation an admin gets for a skip. */
     statusReason?: string | null;

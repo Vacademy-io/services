@@ -379,13 +379,19 @@ function StatusBadge({ status }: { status: QueueStatus }) {
     );
 }
 
-/** Where the call came from, in the words an admin would use. */
+/**
+ * Where the call came from, in the words an admin would use.
+ *
+ * A bulk row names its campaign. Without that, a hundred rows all read "Bulk campaign"
+ * and two concurrent runs are indistinguishable — including the one whose progress
+ * dialog you just closed, which this page is meant to let you pick back up.
+ */
 function sourceLabel(item: QueueItem): string {
     switch (item.source) {
         case 'MANUAL':
             return 'Manual click';
         case 'BULK':
-            return 'Bulk campaign';
+            return item.sourceName ? `Campaign · ${item.sourceName}` : 'Bulk campaign';
         case 'WORKFLOW':
             return 'Automation';
         default:

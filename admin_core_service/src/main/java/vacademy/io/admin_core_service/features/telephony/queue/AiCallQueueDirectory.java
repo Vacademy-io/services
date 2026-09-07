@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallingSettingsService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
@@ -42,6 +43,7 @@ public class AiCallQueueDirectory {
     private static final Logger log = LoggerFactory.getLogger(AiCallQueueDirectory.class);
 
     private final InstituteRepository instituteRepository;
+    private final AudienceRepository audienceRepository;
     private final AiAgentRepository aiAgentRepository;
     private final TelephonyCallLogRepository callLogRepository;
     private final AiCallingSettingsService settingsService;
@@ -83,8 +85,18 @@ public class AiCallQueueDirectory {
             if (notBlank(item.getInstituteId())) instituteIds.add(item.getInstituteId());
             if (notBlank(item.getCampaignId())) campaignIds.add(item.getCampaignId());
         }
+        // Which bulk run a row belongs to. Without this the queue tab shows a hundred
+        // rows all reading "Bulk campaign" with no way to tell two concurrent runs
+        // apart — and no way to find the run whose progress dialog you just closed.
+        Set<String> runRefs = new HashSet<>();
+        for (AiCallQueueItem item : items) {
+            if (notBlank(item.getSourceRef()) && "BULK".equals(item.getSource())) {
+                runRefs.add(item.getSourceRef());
+            }
+        }
         Map<String, String> institutes = instituteNames(instituteIds);
         Map<String, String> agents = agentNames(campaignIds);
+        Map<String, String> runs = campaignNames(runRefs);
 
         // Only reach for an institute's settings when a campaign id is STILL unnamed
         // after ai_agent — i.e. an Aavtaar campaign. Most deployments never pay for this.
@@ -112,7 +124,22 @@ public class AiCallQueueDirectory {
                         + "naming agents: {}", instituteId, e.getMessage());
             }
         }
-        return new Names(institutes, agents);
+        return new Names(institutes, agents, runs);
+    }
+
+    /** Bulk-run ids (audience ids) → campaign name. */
+    private Map<String, String> campaignNames(Collection<String> audienceIds) {
+        Map<String, String> out = new HashMap<>();
+        if (audienceIds == null || audienceIds.isEmpty()) return out;
+        try {
+            for (Object[] row : audienceRepository.findIdAndCampaignNameByIds(audienceIds)) {
+                if (row[0] != null && row[1] != null) out.put((String) row[0], (String) row[1]);
+            }
+        } catch (Exception e) {
+            // A deleted audience must not blank out the rest of the page.
+            log.debug("ai-call queue: could not resolve campaign names: {}", e.getMessage());
+        }
+        return out;
     }
 
     public Map<String, String> instituteNames(Collection<String> instituteIds) {
@@ -138,10 +165,18 @@ public class AiCallQueueDirectory {
     public static final class Names {
         private final Map<String, String> institutes;
         private final Map<String, String> agents;
+        private final Map<String, String> runs;
 
-        Names(Map<String, String> institutes, Map<String, String> agents) {
+        Names(Map<String, String> institutes, Map<String, String> agents,
+              Map<String, String> runs) {
             this.institutes = institutes;
             this.agents = agents;
+            this.runs = runs;
+        }
+
+        /** The campaign a bulk row came from, or null when it is not a bulk row. */
+        public String runName(String sourceRef) {
+            return sourceRef == null ? null : runs.get(sourceRef);
         }
 
         public String instituteName(String instituteId) {

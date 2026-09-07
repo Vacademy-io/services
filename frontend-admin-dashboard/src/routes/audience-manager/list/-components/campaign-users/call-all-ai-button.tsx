@@ -123,7 +123,10 @@ export function CallAllWithAiButton({
     const totalInList = preview.data?.total ?? totalElements;
     // The number the button will actually dial under the chosen scope. Selected rows
     // are re-checked server-side for eligibility, so this is an upper bound there.
-    const callCount = effectiveScope === 'selected' ? Math.min(selectedCount, eligible || selectedCount) : eligible;
+    const callCount =
+        effectiveScope === 'selected'
+            ? Math.min(selectedCount, eligible || selectedCount)
+            : eligible;
     const previewError = preview.isError ? errMsg(preview.error, t) : null;
 
     const footer = (
@@ -195,9 +198,17 @@ export function CallAllWithAiButton({
                                         className="gap-1.5"
                                     >
                                         <div className="flex items-center gap-2">
-                                            <RadioGroupItem value="selected" id="ai-scope-selected" />
-                                            <Label htmlFor="ai-scope-selected" className="font-normal">
-                                                {t('body.scope.selectedOption', { count: selectedCount })}
+                                            <RadioGroupItem
+                                                value="selected"
+                                                id="ai-scope-selected"
+                                            />
+                                            <Label
+                                                htmlFor="ai-scope-selected"
+                                                className="font-normal"
+                                            >
+                                                {t('body.scope.selectedOption', {
+                                                    count: selectedCount,
+                                                })}
                                             </Label>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -252,10 +263,8 @@ export function CallAllWithAiButton({
                     onOpenChange={(o) => !o && setProgress(null)}
                     audienceId={audienceId}
                     instituteId={instituteId!}
-                    startedAtMs={progress.startedAtMs}
                     expectedTotal={progress.expectedTotal}
                     leadNames={progress.leadNames}
-                    parallel={progress.parallel}
                 />
             )}
         </>

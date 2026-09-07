@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.telephony.queue.AiCallQueueService;
+import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.BulkRunSummary;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueItemView;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueSummary;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -51,14 +52,30 @@ public class AiCallQueueController {
         return ResponseEntity.ok(queueService.summary(instituteId));
     }
 
-    /** Queue-side counts for one bulk run, for the campaign progress dialog. */
+    /**
+     * Progress of one bulk run, counted from the QUEUE rather than the call log — so a
+     * 100-lead run reports 100, not just the handful that have dialled so far, and a
+     * lead the queue cancelled still counts toward "finished".
+     */
     @GetMapping("/bulk-run")
-    public ResponseEntity<Map<String, Long>> bulkRun(
+    public ResponseEntity<BulkRunSummary> bulkRun(
             @RequestParam String instituteId,
             @RequestParam String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(queueService.bulkRunCounts(instituteId, audienceId));
+        return ResponseEntity.ok(queueService.bulkRunSummary(instituteId, audienceId));
+    }
+
+    /** Every lead the run enqueued, in dial order — waiting ones included. */
+    @GetMapping("/bulk-run/items")
+    public ResponseEntity<Page<QueueItemView>> bulkRunItems(
+            @RequestParam String instituteId,
+            @RequestParam String audienceId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "200") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(queueService.bulkRunItems(instituteId, audienceId, page, size));
     }
 
     @Data
