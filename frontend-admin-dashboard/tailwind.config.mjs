@@ -71,6 +71,14 @@ module.exports = {
                 'slide-dialog-md': '31.25rem',
                 'slide-dialog-lg': '32.5rem',
             },
+            minHeight: {
+                // Floor for the multi-step send/compose dialogs, whose steps
+                // differ wildly in height. Without it the panel is only as tall
+                // as a closed template picker, so opening the list or moving to
+                // the message preview makes the whole dialog jump. Always below
+                // maxHeight.dialog-tall, at every viewport.
+                'dialog-md': 'min(80vh, 40rem)',
+            },
             fontFamily: {
                 sans: ['Open Sans', 'sans-serif'],
                 // Institute-configured font: index.tsx sets `--app-font-family` on
