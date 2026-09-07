@@ -61,7 +61,7 @@ def visible(db: Session, *, institute_id: str, kind: Optional[str] = None) -> Li
 def list_all(db: Session, *, kind: Optional[str] = None, institute_id: Optional[str] = None,
              status: Optional[str] = None, stock_only: bool = False, limit: int = 500) -> List[Dict[str, Any]]:
     """Super admin: every row, with the institute's name."""
-    sql = ("SELECT " + ", ".join(f"a.{c}" for c in _COLS) + ", i.institute_name FROM tutor_asset_registry a "
+    sql = ("SELECT " + ", ".join(f"a.{c}" for c in _COLS) + ", i.name FROM tutor_asset_registry a "
            "LEFT JOIN institutes i ON i.id = a.institute_id WHERE 1=1")
     params: Dict[str, Any] = {"lim": max(1, min(limit, 2000))}
     if kind:
@@ -93,8 +93,8 @@ def create(db: Session, *, kind: str, provider: str, display_name: str, institut
         INSERT INTO tutor_asset_registry (id, kind, provider, external_id, display_name, institute_id, status, gender,
             languages, preview_url, source_file_id, consent, requested_by, vendor_job_id, notes, fulfilled_at)
         VALUES (:id, :kind, :provider, :ext, :name, :inst, :status, :gender, :langs, :preview, :src, :consent,
-                :by, :job, :notes, CASE WHEN :status = 'ready' THEN now() ELSE NULL END)
-    """), {"id": asset_id, "kind": kind, "provider": provider[:32], "ext": (external_id or None) and external_id[:160],
+                :by, :job, :notes, CASE WHEN CAST(:ready AS BOOLEAN) THEN now() ELSE NULL END)
+    """), {"id": asset_id, "ready": status == "ready", "kind": kind, "provider": provider[:32], "ext": (external_id or None) and external_id[:160],
            "name": display_name[:120], "inst": institute_id, "status": status, "gender": gender,
            "langs": ",".join(languages or [])[:120] or None, "preview": preview_url, "src": source_file_id,
            "consent": bool(consent), "by": requested_by, "job": vendor_job_id, "notes": notes})
