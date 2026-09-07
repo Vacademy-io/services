@@ -112,6 +112,24 @@ function TutorPage() {
   const [stats, setStats] = useState<LessonStats>({ asked: 0, correct: 0, streak: 0, best: 0 });
   // Phones: the outline lives in a bottom sheet instead of a left rail.
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // Desktop: the outline folds to a thin strip so the board and the teacher get the width.
+  const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("tutor.outlineCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleOutline = () => {
+    setOutlineCollapsed((v) => {
+      try {
+        localStorage.setItem("tutor.outlineCollapsed", v ? "0" : "1");
+      } catch {
+        /* private mode */
+      }
+      return !v;
+    });
+  };
   const currentSlideRef = useRef<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const boardCounter = useRef(0);
@@ -747,11 +765,12 @@ function TutorPage() {
         setOutlineOpen(false);
         goToSlide(id);
       }}
+      onBack={endAndLeave}
     />
   );
 
   return (
-    <LayoutContainer fillViewport enableChatbotPanel={false}>
+    <LayoutContainer immersive enableChatbotPanel={false}>
       {/* Phones: a compact teacher strip on top (name, status, outline, end). */}
       <div className="mb-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 lg:hidden">
         <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-9" />
@@ -778,11 +797,38 @@ function TutorPage() {
         </SheetContent>
       </Sheet>
 
-      <div className="flex h-full min-h-0 flex-col gap-2 lg:grid lg:grid-cols-12 lg:gap-3">
-        <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
-          {outline}
+      <div className="flex h-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3">
+        <div className={`hidden min-h-0 shrink-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white transition-[width] lg:block ${outlineCollapsed ? "w-12 p-1" : "w-60 p-3"}`}>
+          {outlineCollapsed ? (
+            <TutorSidebar
+              slideTitle={title}
+              topics={topics}
+              activeTopicId={state?.topic_id ?? null}
+              progressPercent={progress.percent}
+              done={progress.done}
+              total={progress.total}
+              nextSlides={nextSlides}
+              onPickSlide={goToSlide}
+              onBack={endAndLeave}
+              collapsed
+              onToggleCollapse={toggleOutline}
+            />
+          ) : (
+            <TutorSidebar
+              slideTitle={title}
+              topics={topics}
+              activeTopicId={state?.topic_id ?? null}
+              progressPercent={progress.percent}
+              done={progress.done}
+              total={progress.total}
+              nextSlides={nextSlides}
+              onPickSlide={goToSlide}
+              onBack={endAndLeave}
+              onToggleCollapse={toggleOutline}
+            />
+          )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col lg:col-span-6 lg:min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-0">
           {disconnected && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
@@ -827,7 +873,7 @@ function TutorPage() {
             </div>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:w-80 lg:flex-none xl:w-96">
           <TeacherPanel
             compact
             teacherName={boot?.teacher_name || "Teacher"}

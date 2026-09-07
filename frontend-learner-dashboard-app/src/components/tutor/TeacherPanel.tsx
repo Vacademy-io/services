@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal, ArrowsOut, ArrowsIn } from "@phosphor-icons/react";
 import { TeacherAvatar } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
@@ -150,7 +150,18 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   const avatarShown = !!avatarContainerRef && (avatarState === "on" || avatarState === "loading");
   const avatarUsable = !!avatarContainerRef && avatarState !== "failed" && !!onToggleAvatar;
 
-  const hasOptions = (!!onLanguage && (languages?.length ?? 0) > 1) || (voiceMode && !!onPace);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const canFullscreen = typeof document !== "undefined" && !!document.documentElement.requestFullscreen;
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen().catch(() => undefined);
+  };
+  const hasOptions = (!!onLanguage && (languages?.length ?? 0) > 1) || (voiceMode && !!onPace) || canFullscreen;
   const scoreChip = stats && stats.asked > 0 ? (
     <span className="inline-flex shrink-0 items-center gap-1 text-xs">
       <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">{stats.correct}/{stats.asked} right</span>
@@ -285,6 +296,15 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               <Segmented label="Language" items={(languages ?? []).map((l) => ({ id: l, label: LANGUAGE_LABEL[l] }))} value={language} onPick={onLanguage} />
             )}
             {voiceMode && onPace && <Segmented label="Pace" items={PACES} value={pace} onPick={onPace} />}
+            {canFullscreen && (
+              <button type="button" onClick={toggleFullscreen} className="flex w-full items-center justify-between rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-200">
+                <span className="uppercase tracking-wide text-neutral-500">Screen</span>
+                <span className="inline-flex items-center gap-1 font-medium">
+                  {isFullscreen ? <ArrowsIn className="size-3.5" /> : <ArrowsOut className="size-3.5" />}
+                  {isFullscreen ? "Exit full screen" : "Full screen"}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}
