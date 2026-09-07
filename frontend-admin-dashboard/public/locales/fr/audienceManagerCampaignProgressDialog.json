@@ -41,6 +41,7 @@
         "pollPaused": "Mises à jour en direct suspendues (nouvelle tentative en cours) — les appels continuent de se dérouler côté serveur."
     },
     "footer": {
-        "backgroundNotice": "S'exécute en arrière-plan — fermer cette fenêtre n'arrête pas les appels. Le résultat et l'attribution du conseiller de chaque appel se font automatiquement."
+        "backgroundNotice": "S'exécute en arrière-plan — fermer cette fenêtre n'arrête pas les appels. Le résultat et l'attribution du conseiller de chaque appel se font automatiquement.",
+        "cancelRemaining": "Cancel remaining"
     }
 }

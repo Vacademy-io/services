@@ -38,6 +38,7 @@
         "pollPaused": "Live updates paused (retrying) — the calls keep running server-side."
     },
     "footer": {
-        "backgroundNotice": "Runs in the background — closing this window does not stop the calls, and you can follow the rest under Calling → Call Queue. Outcomes and counsellor assignment land automatically after each call."
+        "backgroundNotice": "Runs in the background — closing this window does not stop the calls, and you can follow the rest under Calling → Call Queue. Outcomes and counsellor assignment land automatically after each call.",
+        "cancelRemaining": "Cancel remaining"
     }
 }

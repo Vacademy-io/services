@@ -144,3 +144,22 @@ export const fetchBulkRunItems = async (
     );
     return data?.content ?? [];
 };
+
+/**
+ * Stop the calls a bulk run still has waiting.
+ *
+ * Scoped to this run by `sourceRef`. The unscoped form of this endpoint cancels every
+ * waiting call the institute has — other campaigns, automations, counsellors' own
+ * clicks — which is never what someone stopping one campaign means.
+ */
+export const cancelBulkRun = async (
+    audienceId: string,
+    instituteId: string
+): Promise<{ cancelled: number }> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        `${AI_QUEUE_BASE}/cancel`,
+        { sourceRef: audienceId, reason: 'Cancelled from the campaign progress dialog' },
+        { params: { instituteId } }
+    );
+    return data;
+};

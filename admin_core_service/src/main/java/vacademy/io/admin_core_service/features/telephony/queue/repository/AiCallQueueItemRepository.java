@@ -276,6 +276,8 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
             SELECT q.* FROM ai_call_queue q
              LEFT JOIN telephony_call_log t ON t.id = q.call_log_id
              WHERE q.institute_id = :instituteId
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
                AND (q.status = 'QUEUED'
                     OR (q.status = 'DIALED'
                         AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
@@ -287,13 +289,16 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
             SELECT COUNT(*) FROM ai_call_queue q
              LEFT JOIN telephony_call_log t ON t.id = q.call_log_id
              WHERE q.institute_id = :instituteId
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
                AND (q.status = 'QUEUED'
                     OR (q.status = 'DIALED'
                         AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
                                          'COUNSELLOR_ANSWERED', 'IN_PROGRESS')))
             """,
             nativeQuery = true)
-    Page<AiCallQueueItem> findActive(@Param("instituteId") String instituteId, Pageable pageable);
+    Page<AiCallQueueItem> findActive(@Param("instituteId") String instituteId,
+                                     @Param("sourceRef") String sourceRef, Pageable pageable);
 
     /**
      * Calls that are on a line RIGHT NOW.
@@ -311,6 +316,8 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
                                 'COUNSELLOR_ANSWERED', 'IN_PROGRESS')
                AND (CAST(:instituteId AS VARCHAR) IS NULL
                     OR q.institute_id = CAST(:instituteId AS VARCHAR))
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
              ORDER BY q.dispatched_at DESC
             """,
             countQuery = """
@@ -321,14 +328,25 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
                                 'COUNSELLOR_ANSWERED', 'IN_PROGRESS')
                AND (CAST(:instituteId AS VARCHAR) IS NULL
                     OR q.institute_id = CAST(:instituteId AS VARCHAR))
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
             """,
             nativeQuery = true)
-    Page<AiCallQueueItem> findLive(@Param("instituteId") String instituteId, Pageable pageable);
+    Page<AiCallQueueItem> findLive(@Param("instituteId") String instituteId,
+                                   @Param("sourceRef") String sourceRef, Pageable pageable);
 
-    Page<AiCallQueueItem> findByInstituteIdOrderByCreatedAtDesc(String instituteId, Pageable pageable);
-
-    Page<AiCallQueueItem> findByInstituteIdAndStatusOrderByCreatedAtDesc(
-            String instituteId, String status, Pageable pageable);
+    /** History, newest first, optionally narrowed to one bulk run. */
+    @Query("""
+            SELECT q FROM AiCallQueueItem q
+            WHERE q.instituteId = :instituteId
+              AND (:sourceRef IS NULL OR q.sourceRef = :sourceRef)
+              AND (:status IS NULL OR q.status = :status)
+            ORDER BY q.createdAt DESC
+            """)
+    Page<AiCallQueueItem> findHistory(@Param("instituteId") String instituteId,
+                                      @Param("status") String status,
+                                      @Param("sourceRef") String sourceRef,
+                                      Pageable pageable);
 
     /**
      * Cancel everything still waiting for one institute (optionally narrowed to one

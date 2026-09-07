@@ -334,19 +334,30 @@ public class AiCallQueueService {
     private static final int POSITION_LOOKUP_DEPTH = 5000;
 
     public Page<QueueItemView> list(String instituteId, String status, int page, int size) {
+        return list(instituteId, status, null, page, size);
+    }
+
+    /**
+     * @param sourceRef optional bulk-run (audience) id. Narrowing to one run is what
+     *        makes a hundred-lead campaign findable here after its progress dialog has
+     *        been closed, and what lets "cancel the rest" mean one campaign rather than
+     *        everything this institute has waiting.
+     */
+    public Page<QueueItemView> list(String instituteId, String status, String sourceRef,
+                                    int page, int size) {
         PageRequest pageable = PageRequest.of(Math.max(0, page), Math.min(200, Math.max(1, size)));
+        String run = blankToNull(sourceRef);
         Page<AiCallQueueItem> rows;
         if (LIVE_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findLive(instituteId, pageable);
+            rows = repository.findLive(instituteId, run, pageable);
         } else if (isBlank(status) || ACTIVE_FILTER.equalsIgnoreCase(status)) {
             // Blank means ACTIVE, not "everything": the queue page's job is what has
             // not finished, and defaulting to the full history buries it.
-            rows = repository.findActive(instituteId, pageable);
+            rows = repository.findActive(instituteId, run, pageable);
         } else if (ALL_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findByInstituteIdOrderByCreatedAtDesc(instituteId, pageable);
+            rows = repository.findHistory(instituteId, null, run, pageable);
         } else {
-            rows = repository.findByInstituteIdAndStatusOrderByCreatedAtDesc(
-                    instituteId, status.toUpperCase(), pageable);
+            rows = repository.findHistory(instituteId, status.toUpperCase(), run, pageable);
         }
 
         // One snapshot and one ordered id list for the whole page — see
@@ -399,7 +410,7 @@ public class AiCallQueueService {
 
         Page<AiCallQueueItem> rows;
         if (LIVE_FILTER.equalsIgnoreCase(status)) {
-            rows = repository.findLive(blankToNull(instituteId), pageable);
+            rows = repository.findLive(blankToNull(instituteId), null, pageable);
         } else if (waitingOnly) {
             rows = repository.searchInLineOrder(blankToNull(instituteId), statusFilter,
                     blankToNull(provider), blankToNull(source), pageable);
@@ -551,6 +562,33 @@ public class AiCallQueueService {
         for (int i = 0; i < ordered.size(); i++) positions.put(ordered.get(i), i);
 
         return rows.map(item -> toView(item, snap, positions, names, callStates));
+    }
+
+    /**
+     * Bulk runs this institute has queued, newest first — the campaign filter's options.
+     *
+     * <p>Without this the queue tab is a flat list in which two concurrent campaigns are
+     * indistinguishable, and the run whose progress dialog you just closed is one of a
+     * hundred identical-looking rows.
+     */
+    public List<Map<String, Object>> recentRuns(String instituteId, int limit) {
+        List<Object[]> rows = repository.findRecentRuns(
+                instituteId, SOURCE_BULK, PageRequest.of(0, Math.min(50, Math.max(1, limit))));
+        Set<String> ids = new java.util.LinkedHashSet<>();
+        for (Object[] r : rows) if (r[0] != null) ids.add((String) r[0]);
+        Map<String, String> names = directory.campaignNamesFor(ids);
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            String id = (String) r[0];
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("audienceId", id);
+            m.put("name", names.getOrDefault(id, id));
+            m.put("startedAt", r[1] == null ? null : r[1].toString());
+            m.put("total", ((Number) r[2]).longValue());
+            out.add(m);
+        }
+        return out;
     }
 
     // ── cancel ──────────────────────────────────────────────────────────────────

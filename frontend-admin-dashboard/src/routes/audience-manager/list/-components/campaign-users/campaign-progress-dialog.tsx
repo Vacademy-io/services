@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { CheckCircle, PhoneCall, Robot } from '@phosphor-icons/react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle, PhoneCall, Prohibit, Robot } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { cn } from '@/lib/utils';
 import {
+    cancelBulkRun,
     fetchBulkRunItems,
     fetchBulkRunSummary,
     type BulkRunItem,
@@ -113,6 +116,22 @@ export function CampaignProgressDialog({
     const droppedCount = summary.data?.dropped ?? 0;
     const finished = summary.data?.runFinished ?? false;
     const etaText = formatEta(summary.data?.etaMinutes);
+
+    const queryClient = useQueryClient();
+    // A 100-lead run spans hours. Without a stop here the only control was the queue
+    // tab's unscoped "cancel all waiting", which would also have killed other
+    // campaigns, automations and counsellors' own calls.
+    const cancelRun = useMutation({
+        mutationFn: () => cancelBulkRun(audienceId, instituteId),
+        onSuccess: (r) => {
+            toast.success(`${r.cancelled} remaining call${r.cancelled === 1 ? '' : 's'} cancelled`);
+            queryClient.invalidateQueries({ queryKey: ['ai-bulk-run-summary', audienceId] });
+            queryClient.invalidateQueries({ queryKey: ['ai-bulk-run-items', audienceId] });
+            queryClient.invalidateQueries({ queryKey: ['ai-call-queue-summary'] });
+            queryClient.invalidateQueries({ queryKey: ['ai-call-queue-items'] });
+        },
+        onError: () => toast.error('Could not cancel the remaining calls'),
+    });
 
     return (
         <MyDialog
@@ -240,7 +259,31 @@ export function CampaignProgressDialog({
                     <p className="text-caption text-warning-600">{t('error.pollPaused')}</p>
                 )}
                 {!finished && (
-                    <p className="text-caption text-neutral-500">{t('footer.backgroundNotice')}</p>
+                    <div className="flex items-start justify-between gap-3">
+                        <p className="text-caption text-neutral-500">
+                            {t('footer.backgroundNotice')}
+                        </p>
+                        {waitingCount > 0 && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="shrink-0 gap-1.5 text-danger-600"
+                                disabled={cancelRun.isPending}
+                                onClick={() => {
+                                    if (
+                                        window.confirm(
+                                            `Cancel the ${waitingCount} call(s) still waiting in this campaign? Calls already in progress are not affected.`
+                                        )
+                                    ) {
+                                        cancelRun.mutate();
+                                    }
+                                }}
+                            >
+                                <Prohibit size={14} />
+                                {t('footer.cancelRemaining')}
+                            </Button>
+                        )}
+                    </div>
                 )}
             </div>
         </MyDialog>

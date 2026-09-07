@@ -96,7 +96,7 @@ public class AiCallQueueDirectory {
         }
         Map<String, String> institutes = instituteNames(instituteIds);
         Map<String, String> agents = agentNames(campaignIds);
-        Map<String, String> runs = campaignNames(runRefs);
+        Map<String, String> runs = campaignNamesFor(runRefs);
 
         // Only reach for an institute's settings when a campaign id is STILL unnamed
         // after ai_agent — i.e. an Aavtaar campaign. Most deployments never pay for this.
@@ -128,7 +128,7 @@ public class AiCallQueueDirectory {
     }
 
     /** Bulk-run ids (audience ids) → campaign name. */
-    private Map<String, String> campaignNames(Collection<String> audienceIds) {
+    public Map<String, String> campaignNamesFor(Collection<String> audienceIds) {
         Map<String, String> out = new HashMap<>();
         if (audienceIds == null || audienceIds.isEmpty()) return out;
         try {

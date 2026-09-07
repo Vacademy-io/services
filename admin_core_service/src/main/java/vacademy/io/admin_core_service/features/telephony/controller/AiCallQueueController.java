@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDT
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueSummary;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,11 +37,23 @@ public class AiCallQueueController {
     public ResponseEntity<Page<QueueItemView>> list(
             @RequestParam String instituteId,
             @RequestParam(value = "status", required = false) String status,
+            /** Optional bulk-run (audience) id — narrows the list to one campaign. */
+            @RequestParam(value = "sourceRef", required = false) String sourceRef,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "25") int size,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(queueService.list(instituteId, status, page, size));
+        return ResponseEntity.ok(queueService.list(instituteId, status, sourceRef, page, size));
+    }
+
+    /** Bulk runs this institute has queued, newest first — the campaign filter's options. */
+    @GetMapping("/runs")
+    public ResponseEntity<List<Map<String, Object>>> runs(
+            @RequestParam String instituteId,
+            @RequestParam(value = "limit", defaultValue = "20") int limit,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(queueService.recentRuns(instituteId, limit));
     }
 
     /** Depth, in-flight, the lane's share of the fleet, and a rough time-to-clear. */
