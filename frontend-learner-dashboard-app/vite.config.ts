@@ -3,8 +3,41 @@ import { defineConfig } from "vite";
 import viteReact from "@vitejs/plugin-react";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import path from "path";
-import { readFileSync } from "fs";
 import svgr from "vite-plugin-svgr";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
+
+/**
+ * @spatius/avatarkit (premium teacher avatar) loads its Emscripten core at
+ * runtime from `/assets/avatar_core_wasm-<hash>.wasm`, resolved from the
+ * bundled glue's import.meta.url. Vite does not know about that file, so the
+ * lesson stayed on "Loading your teacher…" with a 404. The SDK's own Vite
+ * plugin does this copy too, but it also overwrites dist/_headers, which
+ * carries our Cloudflare Pages header rules, so this is a copy-only version.
+ */
+const avatarkitWasm = () => {
+    let root = "";
+    return {
+        name: "avatarkit-wasm-copy",
+        configResolved(config: { root: string }) {
+            root = config.root;
+        },
+        closeBundle() {
+            const src = path.join(root, "node_modules/@spatius/avatarkit/dist");
+            if (!existsSync(src)) {
+                console.warn("[avatarkit] package not installed; teacher avatar will not load");
+                return;
+            }
+            const out = path.join(root, "dist/assets");
+            mkdirSync(out, { recursive: true });
+            for (const f of readdirSync(src)) {
+                if (f.startsWith("avatar_core_wasm") && f.endsWith(".wasm")) {
+                    copyFileSync(path.join(src, f), path.join(out, f));
+                    console.log(`[avatarkit] copied ${f} to dist/assets`);
+                }
+            }
+        },
+    };
+};
 
 // Embedded JS bundle version, read from package.json at build time. The OTA
 // check uses this as the "current bundle version" on a fresh install (before
@@ -36,6 +69,7 @@ export default defineConfig({
     plugins: [
         TanStackRouterVite(),
         viteReact(),
+        avatarkitWasm(),
         svgr({
             include: "**/*.svg",
             exclude: [
