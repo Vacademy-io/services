@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash } from "@phosphor-icons/react";
 import { TeacherAvatar } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
@@ -122,81 +122,109 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     setAskMode(false);
   };
 
+  const avatarShown = !!avatarContainerRef && (avatarState === "on" || avatarState === "loading");
+  const avatarUsable = !!avatarContainerRef && avatarState !== "failed" && !!onToggleAvatar;
+
+  const Segmented = <T extends string>({ label, items, value, onPick }: { label: string; items: Array<{ id: T; label: string }>; value?: T; onPick: (v: T) => void }) => (
+    <div className="flex min-w-0 items-center gap-2" role="group" aria-label={label}>
+      <span className="shrink-0 text-xs uppercase tracking-wide text-neutral-500">{label}</span>
+      <div className="flex min-w-0 flex-wrap gap-0.5 rounded-full bg-neutral-100 p-0.5">
+        {items.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            onClick={() => onPick(it.id)}
+            aria-pressed={value === it.id}
+            className={`rounded-full px-2.5 py-0.5 text-xs transition-colors ${value === it.id ? "bg-white font-semibold text-primary-500 shadow-sm" : "text-neutral-600 hover:text-neutral-900"}`}
+          >
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className={`flex items-center gap-3 border-b border-neutral-200 pb-3 ${compact ? "hidden lg:flex" : ""}`}>
-        <TeacherAvatar fileId={teacherAvatarFileId} name={teacherName} speaking={phase === "speaking"} className="size-12" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
-          <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>
-        </div>
-        {voiceMode && (
-          <button type="button" onClick={onToggleSpeak} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title={speakOn ? "Mute teacher" : "Unmute teacher"}>
-            {speakOn ? <SpeakerHigh className="size-4" /> : <SpeakerSlash className="size-4" />}
-          </button>
-        )}
-        {phase === "speaking" && (
-          <button type="button" onClick={onInterrupt} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title="Stop">
-            <Stop className="size-4" />
-          </button>
-        )}
-      </div>
-
+      {/* The teacher: an animated avatar card when it is on, otherwise the photo row. */}
       {avatarContainerRef && avatarState !== "failed" && (
-        <div className={`relative mt-2 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-900 ${avatarState === "on" || avatarState === "loading" ? "aspect-square w-full" : "h-0 border-0"}`}>
+        <div className={`relative overflow-hidden rounded-2xl bg-neutral-900 ${avatarShown ? "aspect-[4/3] w-full" : "h-0"}`}>
           <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
-          {avatarState === "loading" && (
-            <p className="absolute inset-x-0 bottom-2 text-center text-xs text-neutral-300">Loading your teacher…</p>
+          {avatarShown && (
+            <>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-neutral-900/80 to-transparent" />
+              <div className="absolute inset-x-3 bottom-2.5 flex items-end justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">{teacherName}</p>
+                  <p className="flex items-center gap-1.5 text-xs text-neutral-200">
+                    {phase === "speaking" && <span className="inline-block size-1.5 animate-pulse rounded-full bg-success-500" />}
+                    {avatarState === "loading" ? "Loading your teacher…" : PHASE_LABEL[phase]}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {phase === "speaking" && (
+                    <button type="button" onClick={onInterrupt} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title="Stop">
+                      <Stop className="size-4" weight="fill" />
+                    </button>
+                  )}
+                  {voiceMode && (
+                    <button type="button" onClick={onToggleSpeak} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title={speakOn ? "Mute teacher" : "Unmute teacher"}>
+                      {speakOn ? <SpeakerHigh className="size-4" /> : <SpeakerSlash className="size-4" />}
+                    </button>
+                  )}
+                  {avatarUsable && avatarState === "on" && (
+                    <button type="button" onClick={onToggleAvatar} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title="Hide the teacher">
+                      <EyeSlash className="size-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
-      {avatarContainerRef && avatarState !== "failed" && avatarState !== "loading" && onToggleAvatar && (
-        <button type="button" onClick={onToggleAvatar} className="mt-1 self-start text-xs text-neutral-500 underline-offset-2 hover:underline">
-          {avatarState === "on" ? "Hide the teacher's face" : "Show the teacher's face"}
-        </button>
-      )}
-      {stats && stats.asked > 0 && (
-        <div className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
-          <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">
-            {stats.correct} of {stats.asked} so far
-          </span>
-          {stats.streak >= 2 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 font-medium text-warning-700">
-              <Fire className="size-3.5" weight="fill" /> {stats.streak} in a row
-            </span>
+      {!avatarShown && (
+        <div className={`flex items-center gap-3 border-b border-neutral-200 pb-3 ${compact ? "hidden lg:flex" : ""}`}>
+          <TeacherAvatar fileId={teacherAvatarFileId} name={teacherName} speaking={phase === "speaking"} className="size-12" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
+            <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>
+          </div>
+          {avatarUsable && avatarState === "off" && (
+            <button type="button" onClick={onToggleAvatar} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title="Show the teacher">
+              <Eye className="size-4" />
+            </button>
+          )}
+          {voiceMode && (
+            <button type="button" onClick={onToggleSpeak} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title={speakOn ? "Mute teacher" : "Unmute teacher"}>
+              {speakOn ? <SpeakerHigh className="size-4" /> : <SpeakerSlash className="size-4" />}
+            </button>
+          )}
+          {phase === "speaking" && (
+            <button type="button" onClick={onInterrupt} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title="Stop">
+              <Stop className="size-4" />
+            </button>
           )}
         </div>
       )}
-      {onLanguage && (languages?.length ?? 0) > 1 && (
-        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Lesson language">
-          <span className="me-1 text-xs uppercase tracking-wide text-neutral-500">Language</span>
-          {(languages ?? []).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => onLanguage(l)}
-              aria-pressed={language === l}
-              className={`rounded-full px-2.5 py-0.5 text-xs ${language === l ? "bg-primary-500 text-white" : "border border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
-            >
-              {LANGUAGE_LABEL[l]}
-            </button>
-          ))}
-        </div>
-      )}
-      {voiceMode && onPace && (
-        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Teacher's pace">
-          <span className="me-1 text-xs uppercase tracking-wide text-neutral-500">Pace</span>
-          {PACES.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onPace(p.id)}
-              aria-pressed={pace === p.id}
-              className={`rounded-full px-2.5 py-0.5 text-xs ${pace === p.id ? "bg-primary-500 text-white" : "border border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
-            >
-              {p.label}
-            </button>
-          ))}
+
+      {/* Progress and the learner's own dials, in one quiet strip. */}
+      {((stats && stats.asked > 0) || (onLanguage && (languages?.length ?? 0) > 1) || (voiceMode && onPace)) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {stats && stats.asked > 0 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">{stats.correct}/{stats.asked} right</span>
+              {stats.streak >= 2 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 font-medium text-warning-700">
+                  <Fire className="size-3.5" weight="fill" /> {stats.streak}
+                </span>
+              )}
+            </div>
+          )}
+          {onLanguage && (languages?.length ?? 0) > 1 && (
+            <Segmented label="Language" items={(languages ?? []).map((l) => ({ id: l, label: LANGUAGE_LABEL[l] }))} value={language} onPick={onLanguage} />
+          )}
+          {voiceMode && onPace && <Segmented label="Pace" items={PACES} value={pace} onPick={onPace} />}
         </div>
       )}
 
@@ -251,7 +279,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <button type="button" onClick={() => onControl("repeat")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><ArrowCounterClockwise className="size-3" /> Repeat</button>
           <button type="button" onClick={() => setAskMode((v) => !v)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs ${askMode ? "border-primary-500 bg-primary-50 text-primary-500" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}><Question className="size-3" /> Doubt</button>
           <button type="button" onClick={() => onControl("skip")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><SkipForward className="size-3" /> Skip</button>
-          <button type="button" onClick={onEnd} className="ms-auto rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 hover:bg-neutral-50">End</button>
+          <button type="button" onClick={onEnd} className="ms-auto rounded-full px-3 py-1 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-danger-600">End lesson</button>
         </div>
         {voiceMode && (
           <button
