@@ -349,18 +349,22 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
     Page<AiCallQueueItem> findLive(@Param("instituteId") String instituteId,
                                    @Param("sourceRef") String sourceRef, Pageable pageable);
 
-    /** History, newest first, optionally narrowed to one bulk run. */
-    @Query("""
-            SELECT q FROM AiCallQueueItem q
-            WHERE q.instituteId = :instituteId
-              AND (:sourceRef IS NULL OR q.sourceRef = :sourceRef)
-              AND (:status IS NULL OR q.status = :status)
-            ORDER BY q.createdAt DESC
-            """)
-    Page<AiCallQueueItem> findHistory(@Param("instituteId") String instituteId,
-                                      @Param("status") String status,
-                                      @Param("sourceRef") String sourceRef,
-                                      Pageable pageable);
+    // History, newest first. FOUR derived queries rather than one hand-written JPQL with
+    // optional parameters: Spring generates these from the method name, so there is no
+    // ":param IS NULL OR ..." idiom for Hibernate to fail to infer a type for at
+    // runtime. The service picks one; the branching is trivial and the queries cannot
+    // be wrong.
+    Page<AiCallQueueItem> findByInstituteIdOrderByCreatedAtDesc(
+            String instituteId, Pageable pageable);
+
+    Page<AiCallQueueItem> findByInstituteIdAndStatusOrderByCreatedAtDesc(
+            String instituteId, String status, Pageable pageable);
+
+    Page<AiCallQueueItem> findByInstituteIdAndSourceRefOrderByCreatedAtDesc(
+            String instituteId, String sourceRef, Pageable pageable);
+
+    Page<AiCallQueueItem> findByInstituteIdAndStatusAndSourceRefOrderByCreatedAtDesc(
+            String instituteId, String status, String sourceRef, Pageable pageable);
 
     /**
      * Cancel everything still waiting for one institute (optionally narrowed to one
