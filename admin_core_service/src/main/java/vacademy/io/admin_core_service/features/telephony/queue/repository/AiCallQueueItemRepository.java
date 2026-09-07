@@ -276,6 +276,8 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
             SELECT q.* FROM ai_call_queue q
              LEFT JOIN telephony_call_log t ON t.id = q.call_log_id
              WHERE q.institute_id = :instituteId
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
                AND (q.status = 'QUEUED'
                     OR (q.status = 'DIALED'
                         AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
@@ -287,13 +289,16 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
             SELECT COUNT(*) FROM ai_call_queue q
              LEFT JOIN telephony_call_log t ON t.id = q.call_log_id
              WHERE q.institute_id = :instituteId
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
                AND (q.status = 'QUEUED'
                     OR (q.status = 'DIALED'
                         AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
                                          'COUNSELLOR_ANSWERED', 'IN_PROGRESS')))
             """,
             nativeQuery = true)
-    Page<AiCallQueueItem> findActive(@Param("instituteId") String instituteId, Pageable pageable);
+    Page<AiCallQueueItem> findActive(@Param("instituteId") String instituteId,
+                                     @Param("sourceRef") String sourceRef, Pageable pageable);
 
     /**
      * Calls that are on a line RIGHT NOW.
@@ -311,6 +316,8 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
                                 'COUNSELLOR_ANSWERED', 'IN_PROGRESS')
                AND (CAST(:instituteId AS VARCHAR) IS NULL
                     OR q.institute_id = CAST(:instituteId AS VARCHAR))
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
              ORDER BY q.dispatched_at DESC
             """,
             countQuery = """
@@ -321,14 +328,25 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
                                 'COUNSELLOR_ANSWERED', 'IN_PROGRESS')
                AND (CAST(:instituteId AS VARCHAR) IS NULL
                     OR q.institute_id = CAST(:instituteId AS VARCHAR))
+               AND (CAST(:sourceRef AS VARCHAR) IS NULL
+                    OR q.source_ref = CAST(:sourceRef AS VARCHAR))
             """,
             nativeQuery = true)
-    Page<AiCallQueueItem> findLive(@Param("instituteId") String instituteId, Pageable pageable);
+    Page<AiCallQueueItem> findLive(@Param("instituteId") String instituteId,
+                                   @Param("sourceRef") String sourceRef, Pageable pageable);
 
-    Page<AiCallQueueItem> findByInstituteIdOrderByCreatedAtDesc(String instituteId, Pageable pageable);
-
-    Page<AiCallQueueItem> findByInstituteIdAndStatusOrderByCreatedAtDesc(
-            String instituteId, String status, Pageable pageable);
+    /** History, newest first, optionally narrowed to one bulk run. */
+    @Query("""
+            SELECT q FROM AiCallQueueItem q
+            WHERE q.instituteId = :instituteId
+              AND (:sourceRef IS NULL OR q.sourceRef = :sourceRef)
+              AND (:status IS NULL OR q.status = :status)
+            ORDER BY q.createdAt DESC
+            """)
+    Page<AiCallQueueItem> findHistory(@Param("instituteId") String instituteId,
+                                      @Param("status") String status,
+                                      @Param("sourceRef") String sourceRef,
+                                      Pageable pageable);
 
     /**
      * Cancel everything still waiting for one institute (optionally narrowed to one
@@ -358,6 +376,56 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
     int cancelOne(@Param("id") String id,
                   @Param("instituteId") String instituteId,
                   @Param("reason") String reason);
+
+    /**
+     * Every item a bulk run enqueued, in the order it will dial.
+     *
+     * <p>The campaign progress dialog polls this instead of the call log. The call log
+     * only knows about calls that have ALREADY dialled, so on a 100-lead run against a
+     * 3-line fleet it showed three rows and no trace of the other ninety-seven — the
+     * dialog was written when bulk dialled everything at once.
+     *
+     * <p>Ordered by {@code created_at}, which is enqueue order and therefore dial order,
+     * so the list visibly drains from the top.
+     */
+    @Query("""
+            SELECT q FROM AiCallQueueItem q
+            WHERE q.instituteId = :instituteId AND q.source = :source AND q.sourceRef = :sourceRef
+            ORDER BY q.createdAt
+            """)
+    Page<AiCallQueueItem> findRunItems(@Param("instituteId") String instituteId,
+                                       @Param("source") String source,
+                                       @Param("sourceRef") String sourceRef,
+                                       Pageable pageable);
+
+    /**
+     * Calls from this run that are STILL on a line.
+     *
+     * <p>A DIALED queue row means "the provider accepted it" and never changes again, so
+     * it cannot distinguish a call ringing now from one that ended an hour ago. Progress
+     * needs that distinction: a run is only finished when nothing is waiting AND nothing
+     * is still talking.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM ai_call_queue q
+             JOIN telephony_call_log t ON t.id = q.call_log_id
+             WHERE q.institute_id = :instituteId AND q.source = :source
+               AND q.source_ref = :sourceRef AND q.status = 'DIALED'
+               AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
+                                'COUNSELLOR_ANSWERED', 'IN_PROGRESS')
+            """, nativeQuery = true)
+    long countLiveForRun(@Param("instituteId") String instituteId,
+                         @Param("source") String source,
+                         @Param("sourceRef") String sourceRef);
+
+    /** Bulk runs this institute has queued, most recent first — for the queue tab's filter. */
+    @Query("""
+            SELECT q.sourceRef, MIN(q.createdAt), COUNT(q) FROM AiCallQueueItem q
+            WHERE q.instituteId = :instituteId AND q.source = :source AND q.sourceRef IS NOT NULL
+            GROUP BY q.sourceRef ORDER BY MIN(q.createdAt) DESC
+            """)
+    List<Object[]> findRecentRuns(@Param("instituteId") String instituteId,
+                                  @Param("source") String source, Pageable pageable);
 
     /** Queue-side view of a bulk run, for the campaign progress dialog. */
     @Query("""
