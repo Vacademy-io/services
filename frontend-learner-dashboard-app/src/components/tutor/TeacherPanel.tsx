@@ -64,6 +64,9 @@ interface TeacherPanelProps {
   /** Why the avatar stopped (vendor error code or message), and a way to start it again. */
   avatarError?: string;
   onRetryAvatar?: () => void;
+  /** The face is up but its audio is locked until the learner taps it. */
+  avatarNeedsTap?: boolean;
+  onActivateAvatar?: () => void;
   /** The lesson language and the ones the course allows switching to. */
   language?: "en" | "hi";
   languages?: Array<"en" | "hi">;
@@ -106,7 +109,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, compact, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarNeedsTap, onActivateAvatar,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -153,6 +156,16 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       {avatarContainerRef && (
         <div className={`relative overflow-hidden rounded-2xl bg-neutral-900 ${avatarShown ? "aspect-[4/3] w-full" : "h-0"}`}>
           <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
+          {avatarShown && avatarNeedsTap && avatarState === "on" && onActivateAvatar && (
+            <button
+              type="button"
+              onClick={onActivateAvatar}
+              className="absolute inset-0 flex items-center justify-center bg-neutral-900/40"
+              aria-label="Tap to start the teacher"
+            >
+              <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-lg">Tap to start the teacher</span>
+            </button>
+          )}
           {avatarShown && (
             <>
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-neutral-900/80 to-transparent" />
@@ -236,7 +249,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </div>
       )}
 
-      {avatarError && (avatarState === "failed" || avatarState === "on") && (
+      {avatarError && !avatarNeedsTap && (avatarState === "failed" || avatarState === "on") && (
         <p role="status" className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
           {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
           <span className="font-mono">{avatarError}</span>

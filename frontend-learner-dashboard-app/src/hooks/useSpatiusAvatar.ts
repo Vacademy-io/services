@@ -46,6 +46,8 @@ export function useSpatiusAvatar() {
   const [failed, setFailed] = useState<string | null>(null);
   /** Last non-fatal vendor error (websocket drop, playback hiccup); the avatar stays and reconnects. */
   const [warning, setWarning] = useState<string | null>(null);
+  /** Audio unlocked inside a tap and the motion session started: the avatar can actually speak. */
+  const [activated, setActivated] = useState(false);
   const connectedRef = useRef(false);
   const bootRef = useRef<AvatarBoot | null>(null);
   const kitRef = useRef<AvatarKit | null>(null);
@@ -62,7 +64,9 @@ export function useSpatiusAvatar() {
       /* already gone */
     }
     viewRef.current = null;
+    connectedRef.current = false;
     setReady(false);
+    setActivated(false);
   }, []);
 
   /** Mount the avatar into `container` with the session from the server. Call once per lesson. */
@@ -124,6 +128,7 @@ export function useSpatiusAvatar() {
       await (view.initializeAudioContext?.() ?? c.initializeAudioContext?.());
       await (view.start?.() ?? c.start?.());
       connectedRef.current = true;
+      setActivated(true);
       setWarning(null);
     } catch (e: unknown) {
       const code = String((e as { code?: string })?.code ?? "");
@@ -186,5 +191,5 @@ export function useSpatiusAvatar() {
 
   useEffect(() => () => dispose(), [dispose]);
 
-  return { ready, failed, warning, mount, activate, speak, interrupt, dispose, retry };
+  return { ready, failed, warning, activated, mount, activate, speak, interrupt, dispose, retry };
 }

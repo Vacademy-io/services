@@ -100,7 +100,10 @@ function TutorPage() {
   const [avatarOn, setAvatarOn] = useState(true);
   const avatarContainerRef = useRef<HTMLDivElement | null>(null);
   const avatarBootedRef = useRef(false);
-  const avatarActive = voiceMode && avatarOn && avatar.ready && !avatar.failed;
+  // Shown: the face is on screen. Active: it is also unlocked (a tap initialised its audio), so
+  // narration goes through it; until then the speaker plays and the card asks for a tap.
+  const avatarShown = voiceMode && avatarOn && avatar.ready && !avatar.failed;
+  const avatarActive = avatarShown && avatar.activated;
   const avatarActiveRef = useRef(false);
   avatarActiveRef.current = avatarActive;
   // Narration sync: the sentence being spoken and the elements written for it.
@@ -838,7 +841,9 @@ function TutorPage() {
               socket.sendConfig({ pace: p });
             }}
             avatarContainerRef={boot?.avatar && voiceMode ? avatarContainerRef : undefined}
-            avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : avatarActive ? "on" : avatar.ready ? "off" : "loading") : undefined}
+            avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : avatarShown ? "on" : avatar.ready ? "off" : "loading") : undefined}
+            avatarNeedsTap={avatarShown && !avatar.activated}
+            onActivateAvatar={() => void avatar.activate()}
             avatarError={avatar.failed ?? avatar.warning ?? undefined}
             onToggleAvatar={() => setAvatarOn((v) => !v)}
             onRetryAvatar={async () => {
