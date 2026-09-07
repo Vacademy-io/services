@@ -198,7 +198,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     <div className="flex h-full min-h-0 flex-col">
       {/* The teacher: an animated avatar card when it is on, otherwise the photo row. */}
       {avatarContainerRef && (
-        <div className={`relative overflow-hidden rounded-2xl bg-neutral-900 ${avatarShown ? "aspect-[4/3] w-full" : "h-0"}`}>
+        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-neutral-100 to-neutral-300 ${avatarShown ? "aspect-video w-full" : "h-0"}`}>
           <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
           {avatarShown && avatarNeedsTap && avatarState === "on" && onActivateAvatar && (
             <button
@@ -212,7 +212,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           )}
           {avatarShown && (
             <>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-neutral-900/80 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-neutral-900/75 to-transparent" />
               <div className="absolute inset-x-3 bottom-2.5 flex items-end justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-white">{teacherName}</p>

@@ -76,7 +76,9 @@ export function useSpatiusAvatar() {
       kitRef.current = kit;
       await kit.AvatarSDK.initialize(boot.app_id, {
         drivingServiceMode: kit.DrivingServiceMode.direct,
-        renderQuality: kit.RenderQuality.high,
+        // The SDK's default and what Spatius Studio renders with; "high" scales the
+        // splat pass down and single-photo avatars visibly soften.
+        renderQuality: kit.RenderQuality.ultra,
         audioFormat: { channelCount: 1, sampleRate: TARGET_RATE },
       });
       kit.AvatarSDK.setSessionToken(boot.session_token);
