@@ -43,6 +43,7 @@ import { Input } from '@/components/ui/input';
 import Papa from 'papaparse';
 import { toast } from 'sonner';
 import { LIVE_SESSION_ALL_ATTENDANCE } from '@/constants/urls';
+import { getInstituteId } from '@/constants/helper';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import type { AttendanceResponseType, ContentType } from './-services/attendance';
 
@@ -493,15 +494,20 @@ function AttendanceTrackerContent() {
         return () => clearTimeout(timer);
     }, [searchInput]);
 
+    // "All Batches" sends batch_ids: null, so this is the only thing scoping the report to
+    // the current institute — never drop it.
+    const instituteId = getInstituteId() ?? '';
+
     const filterRequest = useMemo(
         () => ({
+            institute_id: instituteId,
             name: searchQuery,
             start_date: startDate ? format(startDate, 'yyyy-MM-dd') : '2020-01-01',
             end_date: endDate ? format(endDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
             batch_ids: selectedBatchIds.length > 0 ? selectedBatchIds : null,
             live_session_ids: selectedLiveSessions.length > 0 ? selectedLiveSessions : null,
         }),
-        [searchQuery, startDate, endDate, selectedBatchIds, selectedLiveSessions]
+        [instituteId, searchQuery, startDate, endDate, selectedBatchIds, selectedLiveSessions]
     );
 
     // Use attendance service hook

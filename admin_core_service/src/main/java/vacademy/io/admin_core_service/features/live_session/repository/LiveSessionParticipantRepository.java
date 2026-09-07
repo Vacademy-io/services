@@ -254,7 +254,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         JOIN student s ON s.user_id = m.user_id
         JOIN session_schedules ss ON ss.session_id = lsp.session_id
         JOIN live_session ls ON ls.id = lsp.session_id
-        WHERE ss.meeting_date BETWEEN :startDate AND :endDate
+        WHERE m.institute_id = :instituteId
+          AND ss.meeting_date BETWEEN :startDate AND :endDate
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
@@ -272,7 +273,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         JOIN student s ON s.user_id = m.user_id
         JOIN session_schedules ss ON ss.session_id = lsp.session_id
         JOIN live_session ls ON ls.id = lsp.session_id
-        WHERE ss.meeting_date BETWEEN :startDate AND :endDate
+        WHERE m.institute_id = :instituteId
+          AND ss.meeting_date BETWEEN :startDate AND :endDate
           AND (:name IS NULL OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :name, '%')))
           AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
           AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
@@ -283,6 +285,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             nativeQuery = true
     )
     Page<String> findDistinctStudentIdsWithFilters(
+            @Param("instituteId") String instituteId,
             @Param("name") String name,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
@@ -342,7 +345,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         AND fbl.session_id = lsp.session_id
         AND fbl.schedule_id = ss.id
         AND fbl.log_type = 'FEEDBACK_SUBMITTED'
-    WHERE s.user_id IN (:studentIds)
+    WHERE m.institute_id = :instituteId
+    AND s.user_id IN (:studentIds)
     AND ss.meeting_date BETWEEN :startDate AND :endDate
     AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
@@ -352,6 +356,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     ORDER BY LOWER(s.full_name), ss.meeting_date
 """,nativeQuery = true)
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(
+            @Param("instituteId") String instituteId,
             @Param("studentIds") List<String> studentIds,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
