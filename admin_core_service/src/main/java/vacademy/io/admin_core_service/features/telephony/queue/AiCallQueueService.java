@@ -68,6 +68,25 @@ public class AiCallQueueService {
     /** Rows per insert transaction for a bulk enqueue. */
     private static final int CHUNK = 100;
 
+    /** Ordinary work: bulk campaigns and automation. */
+    public static final int PRIORITY_DEFAULT = 100;
+
+    /**
+     * A person clicked Call and is waiting.
+     *
+     * <p>Everything used to enqueue at the same priority, which meant a counsellor's
+     * click during a 100-lead campaign landed at position 101 and waited out the whole
+     * run — roughly an hour and a half. It could not even be rescued by reserving a
+     * slot: the drain query takes each lane's OLDEST rows, so the click was never in
+     * the candidate set to begin with.
+     *
+     * <p>Ranking it above bulk fixes both ends at once. The drainer orders by priority
+     * first, so it surfaces immediately; and {@code countAheadInLane} counts only rows
+     * that outrank it, so the inline fast path sees an empty lane ahead and dials on the
+     * request thread exactly as it does on an idle fleet.
+     */
+    public static final int PRIORITY_INTERACTIVE = 200;
+
     /**
      * Pseudo-status for "on a line right now". Not a real {@link AiCallQueueStatus} —
      * the queue row stops at DIALED, so liveness is a join against the call log.
@@ -188,7 +207,7 @@ public class AiCallQueueService {
         return AiCallQueueItem.builder()
                 .instituteId(req.getInstituteId())
                 .provider(provider)
-                .priority(100)
+                .priority(trigger == CallTrigger.MANUAL ? PRIORITY_INTERACTIVE : PRIORITY_DEFAULT)
                 .source(source)
                 .sourceRef(sourceRef)
                 .callTrigger((trigger == null ? CallTrigger.AUTOMATION : trigger).name())
@@ -304,7 +323,18 @@ public class AiCallQueueService {
         if (ahead <= 0) return 0;
         int laneSlots = Math.max(1, snap.laneCapacityFor(instituteId, provider));
         double batches = Math.ceil((double) ahead / laneSlots);
-        return Math.max(1, Math.round(batches * capacityService.avgCallSeconds() / 60.0));
+        long dialing = Math.max(1, Math.round(batches * capacityService.avgCallSeconds() / 60.0));
+
+        // Nothing dials while the lane is held, so the wait is the hold PLUS the work.
+        // Reporting only the work told an admin at 20:55, with the window closing at
+        // 21:00, that a hundred-lead run had "about 1 h 40 min left" when in truth
+        // nothing would happen until 09:00 the next morning.
+        Instant earliest = repository.findEarliestNotBefore(instituteId);
+        if (earliest != null && earliest.isAfter(Instant.now())) {
+            long held = Duration.between(Instant.now(), earliest).toMinutes();
+            return Math.max(1, held + dialing);
+        }
+        return dialing;
     }
 
     public QueueSummary summary(String instituteId) {

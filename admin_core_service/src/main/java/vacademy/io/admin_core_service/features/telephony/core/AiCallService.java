@@ -279,6 +279,37 @@ public class AiCallService {
             }
         }
 
+        // PER-LEAD ceiling, rolling 24h. Distinct from the institute cap above: that
+        // one bounds total spend, this one stops a single lead being dialled over and
+        // over. It exists because the queue stretched a bulk run from minutes to hours
+        // — the campaign's own cooldown only looks back five minutes, so re-firing a
+        // run mid-flight re-enqueued every lead already called and rang them again.
+        // The setting was already there (maxCallsPerDayPerLead, default 3); only the
+        // CALL_AI workflow node ever honoured it, so bulk and automation had no
+        // per-lead ceiling at all.
+        //
+        // Skipped for a single manual click, exactly like the institute cap: a person
+        // asking for one call cannot fan out, and silently refusing them is the failure
+        // mode this whole guard set keeps producing.
+        if (!mock && trigger.enforcesPerLeadDailyCap()) {
+            int perLead = settings.getMaxCallsPerDayPerLead() > 0
+                    ? settings.getMaxCallsPerDayPerLead() : 3;
+            java.sql.Timestamp since = java.sql.Timestamp.from(
+                    Instant.now().minus(Duration.ofHours(24)));
+            long already = callLogRepo.countOutboundToLeadSince(
+                    req.getInstituteId(), userId, provider, since);
+            if (already >= perLead) {
+                log.info("AI call skipped: lead {} already had {} {} call(s) in the last 24h "
+                        + "(cap {})", userId, already, provider, perLead);
+                return AiCallResponseDTO.builder()
+                        .status("SKIPPED_LEAD_DAILY_CAP")
+                        .dispatched(false)
+                        .providerMessage("This lead has already been called the maximum number "
+                                + "of times today.")
+                        .build();
+            }
+        }
+
         // De-duplicate a near-simultaneous double dispatch for the SAME lead. Aavtaar
         // doesn't echo our correlation id, so two dials placed within milliseconds (the
         // CALL_AI node entered twice / a bulk run + the node) become two real calls — one

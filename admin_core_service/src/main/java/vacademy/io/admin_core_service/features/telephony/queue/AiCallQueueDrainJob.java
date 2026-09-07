@@ -81,6 +81,7 @@ public class AiCallQueueDrainJob {
     private static final String SKIPPED_ASSIGNED = "SKIPPED_ASSIGNED";
     private static final String SKIPPED_DAILY_CAP = "SKIPPED_DAILY_CAP";
     private static final String SKIPPED_DUPLICATE = "SKIPPED_DUPLICATE";
+    private static final String SKIPPED_LEAD_DAILY_CAP = "SKIPPED_LEAD_DAILY_CAP";
 
     /** Give up on an item after this many dial attempts. */
     private static final int MAX_ATTEMPTS = 3;
@@ -346,6 +347,13 @@ public class AiCallQueueDrainJob {
                 case SKIPPED_DUPLICATE -> {
                     finish(item, AiCallQueueStatus.CANCELLED,
                             "This lead was called by another path moments ago.");
+                    return DispatchOutcome.ITEM_HANDLED;
+                }
+                case SKIPPED_LEAD_DAILY_CAP -> {
+                    // Per LEAD, not per institute, so only this item is dropped — the
+                    // rest of the lane is unaffected and keeps dialling.
+                    finish(item, AiCallQueueStatus.CANCELLED,
+                            "Already called the maximum number of times today.");
                     return DispatchOutcome.ITEM_HANDLED;
                 }
                 case SKIPPED_DAILY_CAP -> {
