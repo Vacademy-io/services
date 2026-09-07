@@ -182,6 +182,8 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             courseIds: [],
             limit: 3,
             layout: 'row',
+            badgeText: '',
+            badgeTone: 'hot',
         },
     },
 

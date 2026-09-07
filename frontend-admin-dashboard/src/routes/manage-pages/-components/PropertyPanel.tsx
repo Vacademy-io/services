@@ -5347,6 +5347,56 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
 
+            <div className="border-t border-gray-100 pt-4">
+                <Label className="text-xs">Ribbon (optional)</Label>
+                <p className="mt-0.5 text-caption text-gray-400">
+                    Shown on the top-right of every card, opposite the discount badge.
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                    {[
+                        { text: 'Hot', tone: 'hot' },
+                        { text: 'Latest', tone: 'new' },
+                        { text: 'Limited', tone: 'limited' },
+                        { text: 'Fast-track', tone: 'neutral' },
+                    ].map((preset) => (
+                        <button key={preset.text}
+                            onClick={() => updateComponent(pageId, component.id, {
+                                props: { ...props, badgeText: preset.text, badgeTone: preset.tone },
+                            })}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${props.badgeText === preset.text ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                            {preset.text}
+                        </button>
+                    ))}
+                    {props.badgeText ? (
+                        <button onClick={() => updateProp('badgeText', '')}
+                            className="rounded px-2.5 py-1 text-caption font-medium text-gray-500 hover:bg-gray-100">
+                            Clear
+                        </button>
+                    ) : null}
+                </div>
+                <Input className="mt-2" value={props.badgeText || ''}
+                    placeholder="Or type your own — e.g. Only 5 seats"
+                    onChange={(e) => updateProp('badgeText', e.target.value)} />
+                {props.badgeText ? (
+                    <div className="mt-2">
+                        <Label className="text-xs">Ribbon colour</Label>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                            {[
+                                { id: 'hot', label: 'Red' },
+                                { id: 'new', label: 'Green' },
+                                { id: 'limited', label: 'Amber' },
+                                { id: 'neutral', label: 'Dark' },
+                            ].map((tone) => (
+                                <button key={tone.id} onClick={() => updateProp('badgeTone', tone.id)}
+                                    className={`rounded px-2.5 py-1 text-caption font-medium ${(props.badgeTone || 'hot') === tone.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                                    {tone.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+
             <p className="rounded bg-gray-50 px-2 py-1.5 text-caption text-gray-500">
                 Prices, discount badges and images come live from the course catalogue —
                 nothing to keep in sync here. An empty result hides the whole section.

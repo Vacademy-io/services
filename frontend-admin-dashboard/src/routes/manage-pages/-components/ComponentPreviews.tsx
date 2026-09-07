@@ -1627,8 +1627,13 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
                     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${across}, 1fr)` }}>
                         {Array.from({ length: Math.min(n, across) }).map((_, i) => (
                             <div key={i} className="overflow-hidden rounded-xl border border-neutral-200 bg-catalogue-bg-elevated">
-                                <div className="flex h-24 items-center justify-center bg-neutral-100 text-xs text-neutral-300">
+                                <div className="relative flex h-24 items-center justify-center bg-neutral-100 text-xs text-neutral-300">
                                     {t('dispatcher.courseImage')}
+                                    {props.badgeText ? (
+                                        <span className="absolute right-2 top-2 rounded-full bg-neutral-800 px-2 py-0.5 text-caption font-semibold text-white">
+                                            {props.badgeText}
+                                        </span>
+                                    ) : null}
                                 </div>
                                 <div className="space-y-2 p-3">
                                     <div className="h-3 w-3/4 rounded bg-neutral-200" />

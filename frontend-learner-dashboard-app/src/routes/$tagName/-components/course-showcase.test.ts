@@ -67,6 +67,10 @@ describe("courseShowcase", () => {
     expect(html).toContain("sm:grid-cols-2");
   });
 
+  it("renders no ribbon by default", () => {
+    expect(render({ title: "X", limit: 1 })).not.toContain("bg-danger-500");
+  });
+
   it("uses four tracks only in grid layout", () => {
     expect(render({ title: "X", limit: 8, layout: "grid" })).toContain("lg:grid-cols-4");
     expect(render({ title: "X", limit: 8, layout: "row" })).toContain("lg:grid-cols-3");

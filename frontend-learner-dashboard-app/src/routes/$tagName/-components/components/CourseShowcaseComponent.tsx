@@ -21,6 +21,17 @@ import { cn } from "@/lib/utils";
 /** Where the strip's courses come from. */
 export type CourseShowcaseSource = "newest" | "onSale" | "tag" | "picked";
 
+/** Ribbon palette. Every class here is a real built utility — an invented
+ *  colour name compiles fine and renders an unstyled pill. */
+export type CourseShowcaseBadgeTone = "hot" | "new" | "limited" | "neutral";
+
+const BADGE_TONE: Record<CourseShowcaseBadgeTone, string> = {
+    hot: "bg-danger-500 text-white",
+    new: "bg-success-600 text-white",
+    limited: "bg-warning-500 text-white",
+    neutral: "bg-neutral-800 text-white",
+};
+
 interface ShowcaseCourse {
     id: string;
     title: string;
@@ -45,6 +56,10 @@ export interface CourseShowcaseProps {
     courseIds?: string[];
     limit?: number;
     layout?: "row" | "grid";
+    /** Optional ribbon on each card — "Hot", "Only 5 seats", anything. */
+    badgeText?: string;
+    /** Ribbon colour. Free text still works; this only picks the palette. */
+    badgeTone?: CourseShowcaseBadgeTone;
     backgroundColor?: string;
     instituteId?: string;
     tagName?: string;
@@ -95,6 +110,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     courseIds,
     limit = 3,
     layout = "row",
+    badgeText,
+    badgeTone = "hot",
     backgroundColor,
     instituteId,
     tagName,
@@ -250,6 +267,20 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                       <div className="absolute start-3 top-3">
                                           <OfferBadge actual={c.price} elevated={c.elevatedPrice} />
                                       </div>
+                                      {/* Ribbon sits on the END corner so it never
+                                          collides with the discount badge. */}
+                                      {badgeText?.trim() && (
+                                          <div className="absolute end-3 top-3">
+                                              <span
+                                                  className={cn(
+                                                      "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm",
+                                                      BADGE_TONE[badgeTone] || BADGE_TONE.hot,
+                                                  )}
+                                              >
+                                                  {badgeText.trim()}
+                                              </span>
+                                          </div>
+                                      )}
                                   </div>
                                   <div className="flex flex-1 flex-col gap-2 p-5">
                                       <h3 className="text-base font-semibold text-catalogue-text-primary">
