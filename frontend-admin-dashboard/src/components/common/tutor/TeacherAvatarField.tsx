@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CircleNotch, UserFocus } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
 import { createTutorAvatar, getTutorAvatarJob } from '@/services/tutor';
@@ -39,6 +40,7 @@ export const TeacherAvatarField: React.FC<Props> = ({
     const [consent, setConsent] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
+    const [manualId, setManualId] = useState('');
     const timer = useRef<ReturnType<typeof setInterval> | null>(null);
     const photo = fileId || inheritedFileId;
     const active = provider === 'spatius' && !!avatarId;
@@ -142,6 +144,30 @@ export const TeacherAvatarField: React.FC<Props> = ({
                         >
                             {jobId ? <CircleNotch className="size-4 animate-spin" /> : null}
                             {jobId ? `Creating… (${status})` : 'Create avatar from the face photo'}
+                        </MyButton>
+                    </div>
+                    <div className="flex flex-wrap items-end gap-2 pt-1">
+                        <div className="flex min-w-56 flex-1 flex-col gap-1">
+                            <Label htmlFor="avatar-manual-id" className="text-xs text-neutral-600">
+                                Or use an avatar already created in Spatius Studio (avatar ID)
+                            </Label>
+                            <Input
+                                id="avatar-manual-id"
+                                value={manualId}
+                                placeholder="avatar_…"
+                                className="h-8 text-xs"
+                                onChange={(e) => setManualId(e.target.value)}
+                            />
+                        </div>
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
+                            scale="small"
+                            layoutVariant="default"
+                            disabled={!manualId.trim() || !consent}
+                            onClick={() => onChange('spatius', manualId.trim())}
+                        >
+                            Use this avatar
                         </MyButton>
                     </div>
                 </>
