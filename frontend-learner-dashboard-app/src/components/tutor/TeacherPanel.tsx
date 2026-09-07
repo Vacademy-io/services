@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise } from "@phosphor-icons/react";
 import { TeacherAvatar } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
@@ -61,6 +61,9 @@ interface TeacherPanelProps {
   avatarContainerRef?: React.RefObject<HTMLDivElement | null>;
   avatarState?: "loading" | "on" | "off" | "failed";
   onToggleAvatar?: () => void;
+  /** Why the avatar stopped (vendor error code or message), and a way to start it again. */
+  avatarError?: string;
+  onRetryAvatar?: () => void;
   /** The lesson language and the ones the course allows switching to. */
   language?: "en" | "hi";
   languages?: Array<"en" | "hi">;
@@ -103,7 +106,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, compact, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -128,7 +131,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   const Segmented = <T extends string>({ label, items, value, onPick }: { label: string; items: Array<{ id: T; label: string }>; value?: T; onPick: (v: T) => void }) => (
     <div className="flex min-w-0 items-center gap-2" role="group" aria-label={label}>
       <span className="shrink-0 text-xs uppercase tracking-wide text-neutral-500">{label}</span>
-      <div className="flex min-w-0 flex-wrap gap-0.5 rounded-full bg-neutral-100 p-0.5">
+      <div className="flex shrink-0 flex-nowrap gap-0.5 rounded-full bg-neutral-100 p-0.5">
         {items.map((it) => (
           <button
             key={it.id}
@@ -147,7 +150,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* The teacher: an animated avatar card when it is on, otherwise the photo row. */}
-      {avatarContainerRef && avatarState !== "failed" && (
+      {avatarContainerRef && (
         <div className={`relative overflow-hidden rounded-2xl bg-neutral-900 ${avatarShown ? "aspect-[4/3] w-full" : "h-0"}`}>
           <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
           {avatarShown && (
@@ -195,6 +198,11 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               <Eye className="size-4" />
             </button>
           )}
+          {avatarState === "failed" && onRetryAvatar && (
+            <button type="button" onClick={onRetryAvatar} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title={`Restart the teacher avatar${avatarError ? ` (${avatarError})` : ""}`}>
+              <ArrowsClockwise className="size-4" />
+            </button>
+          )}
           {voiceMode && (
             <button type="button" onClick={onToggleSpeak} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title={speakOn ? "Mute teacher" : "Unmute teacher"}>
               {speakOn ? <SpeakerHigh className="size-4" /> : <SpeakerSlash className="size-4" />}
@@ -228,6 +236,15 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </div>
       )}
 
+      {avatarError && (avatarState === "failed" || avatarState === "on") && (
+        <p role="status" className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
+          {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
+          <span className="font-mono">{avatarError}</span>
+          {avatarState === "failed" && onRetryAvatar && (
+            <button type="button" onClick={onRetryAvatar} className="ms-2 font-medium text-primary-500 hover:underline">Try again</button>
+          )}
+        </p>
+      )}
       {notice && (
         <p role="status" className="mt-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-1.5 text-xs text-warning-700">
           {notice}

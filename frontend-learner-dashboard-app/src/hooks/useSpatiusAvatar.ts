@@ -34,9 +34,20 @@ export async function toPcm16(ctx: AudioContext, data: ArrayBuffer): Promise<Arr
   return out.buffer;
 }
 
+/** Errors after which the avatar cannot continue this lesson; everything else is transient. */
+const FATAL_CODES = new Set([
+  "appIDUnrecognized", "avatarIDUnrecognized", "insufficientBalance", "sessionTokenInvalid", "sessionTokenExpired",
+  "failedToDownloadAvatarAssets", "failedToFetchAvatarMetadata", "unsupportedAvatarAsset", "invalidAvatarMetadata",
+  "concurrentLimitExceeded",
+]);
+
 export function useSpatiusAvatar() {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  /** Last non-fatal vendor error (websocket drop, playback hiccup); the avatar stays and reconnects. */
+  const [warning, setWarning] = useState<string | null>(null);
+  const connectedRef = useRef(false);
+  const bootRef = useRef<AvatarBoot | null>(null);
   const kitRef = useRef<AvatarKit | null>(null);
   const viewRef = useRef<InstanceType<AvatarKit["AvatarView"]> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -79,11 +90,25 @@ export function useSpatiusAvatar() {
         }
       };
       c.onError = (err) => {
-        setFailed(err instanceof Error ? err.message : "avatar error");
+        const code = String((err as { code?: string })?.code ?? "");
+        const message = err instanceof Error ? err.message : "avatar error";
+        console.warn("[tutor avatar]", code || "error", message);
+        if (FATAL_CODES.has(code)) {
+          setFailed(code ? `${message} (${code})` : message);
+          return;
+        }
+        // Connection-level errors end the motion session; the next segment reconnects.
+        if (code.startsWith("websocket") || code === "sessionTimeout" || code === "networkLayerNotAvailable" || code === "serverError") {
+          connectedRef.current = false;
+        }
+        setWarning(code || message);
       };
       viewRef.current = view;
+      bootRef.current = boot;
+      connectedRef.current = false;
       setReady(true);
       setFailed(null);
+      setWarning(null);
     } catch (e: unknown) {
       setFailed(e instanceof Error ? e.message : "The teacher avatar could not start");
       setReady(false);
@@ -98,8 +123,26 @@ export function useSpatiusAvatar() {
       const c = view.controller;
       await (view.initializeAudioContext?.() ?? c.initializeAudioContext?.());
       await (view.start?.() ?? c.start?.());
+      connectedRef.current = true;
+      setWarning(null);
     } catch (e: unknown) {
-      setFailed(e instanceof Error ? e.message : "The teacher avatar could not connect");
+      const code = String((e as { code?: string })?.code ?? "");
+      console.warn("[tutor avatar] connect failed", code, e);
+      if (FATAL_CODES.has(code)) setFailed(e instanceof Error ? e.message : "The teacher avatar could not connect");
+      else setWarning(code || (e instanceof Error ? e.message : "connect failed"));
+    }
+  }, []);
+
+  /** Reconnect the motion session (after a drop or an idle timeout). */
+  const reconnect = useCallback(async () => {
+    const view = viewRef.current;
+    if (!view || connectedRef.current) return;
+    try {
+      await (view.start?.() ?? view.controller.start?.());
+      connectedRef.current = true;
+      setWarning(null);
+    } catch (e: unknown) {
+      console.warn("[tutor avatar] reconnect failed", e);
     }
   }, []);
 
@@ -108,6 +151,7 @@ export function useSpatiusAvatar() {
     const view = viewRef.current;
     if (!view) return;
     if (!ctxRef.current) ctxRef.current = new AudioContext();
+    if (!connectedRef.current) await reconnect();
     const pcm = await toPcm16(ctxRef.current, audio);
     const done = new Promise<void>((resolve) => {
       idleWaitersRef.current.push(resolve);
@@ -116,7 +160,7 @@ export function useSpatiusAvatar() {
     });
     view.controller.send(pcm, true);
     await done;
-  }, []);
+  }, [reconnect]);
 
   const interrupt = useCallback(() => {
     try {
@@ -130,7 +174,17 @@ export function useSpatiusAvatar() {
     playingRef.current = false;
   }, []);
 
+  /** Start over with a fresh session (after a fatal error). */
+  const retry = useCallback(async (boot: AvatarBoot) => {
+    const container = containerRef.current;
+    if (!container) return;
+    dispose();
+    setFailed(null);
+    await mount(boot, container);
+    await activate();
+  }, [dispose, mount, activate]);
+
   useEffect(() => () => dispose(), [dispose]);
 
-  return { ready, failed, mount, activate, speak, interrupt, dispose };
+  return { ready, failed, warning, mount, activate, speak, interrupt, dispose, retry };
 }

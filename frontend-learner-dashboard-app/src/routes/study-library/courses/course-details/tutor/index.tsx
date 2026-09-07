@@ -839,7 +839,18 @@ function TutorPage() {
             }}
             avatarContainerRef={boot?.avatar && voiceMode ? avatarContainerRef : undefined}
             avatarState={boot?.avatar && voiceMode ? (avatar.failed ? "failed" : avatarActive ? "on" : avatar.ready ? "off" : "loading") : undefined}
+            avatarError={avatar.failed ?? avatar.warning ?? undefined}
             onToggleAvatar={() => setAvatarOn((v) => !v)}
+            onRetryAvatar={async () => {
+              if (!sessionRef.current) return;
+              try {
+                const tok = await getTutorAvatarToken(sessionRef.current);
+                await avatar.retry({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token });
+                setAvatarOn(true);
+              } catch {
+                /* stays off */
+              }
+            }}
             language={language}
             languages={boot?.languages ?? ["en"]}
             onLanguage={(l) => {
