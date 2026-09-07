@@ -159,6 +159,20 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
     @Query("SELECT COUNT(q) FROM AiCallQueueItem q WHERE q.instituteId = :instituteId AND q.status = 'QUEUED'")
     long countQueuedForInstitute(@Param("instituteId") String instituteId);
 
+    /**
+     * When this institute's queue can next dial anything.
+     *
+     * <p>Null means "now". A value in the future means the whole lane is held — outside
+     * calling hours, out of credits, or behind its daily cap. Without this the ETA is
+     * computed purely from depth and slot count, so a run parked until 09:00 still
+     * reported "about 1 h 40 min left" at five to nine in the evening.
+     */
+    @Query("""
+            SELECT MIN(q.notBefore) FROM AiCallQueueItem q
+            WHERE q.instituteId = :instituteId AND q.status = 'QUEUED'
+            """)
+    Instant findEarliestNotBefore(@Param("instituteId") String instituteId);
+
     @Query("SELECT COUNT(q) FROM AiCallQueueItem q WHERE q.status = 'QUEUED'")
     long countQueuedTotal();
 
