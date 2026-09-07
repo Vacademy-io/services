@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal } from "@phosphor-icons/react";
 import { TeacherAvatar } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
@@ -113,7 +113,26 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
+
+  // The options popover closes on an outside tap or Escape.
+  useEffect(() => {
+    if (!optionsOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!optionsRef.current?.contains(e.target as Node)) setOptionsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOptionsOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [optionsOpen]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
@@ -131,8 +150,33 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   const avatarShown = !!avatarContainerRef && (avatarState === "on" || avatarState === "loading");
   const avatarUsable = !!avatarContainerRef && avatarState !== "failed" && !!onToggleAvatar;
 
+  const hasOptions = (!!onLanguage && (languages?.length ?? 0) > 1) || (voiceMode && !!onPace);
+  const scoreChip = stats && stats.asked > 0 ? (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs">
+      <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">{stats.correct}/{stats.asked} right</span>
+      {stats.streak >= 2 && (
+        <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-50 px-1.5 py-0.5 font-medium text-warning-700">
+          <Fire className="size-3" weight="fill" /> {stats.streak}
+        </span>
+      )}
+    </span>
+  ) : null;
+  const optionsButton = (onDark: boolean) =>
+    hasOptions ? (
+      <button
+        type="button"
+        onClick={() => setOptionsOpen((v) => !v)}
+        aria-expanded={optionsOpen}
+        aria-label="Lesson options"
+        title="Language and pace"
+        className={onDark ? "rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" : "rounded-full p-2 text-neutral-500 hover:bg-neutral-100"}
+      >
+        <SlidersHorizontal className="size-4" />
+      </button>
+    ) : null;
+
   const Segmented = <T extends string>({ label, items, value, onPick }: { label: string; items: Array<{ id: T; label: string }>; value?: T; onPick: (v: T) => void }) => (
-    <div className="flex min-w-0 items-center gap-2" role="group" aria-label={label}>
+    <div className="flex min-w-0 items-center justify-between gap-2" role="group" aria-label={label}>
       <span className="shrink-0 text-xs uppercase tracking-wide text-neutral-500">{label}</span>
       <div className="flex shrink-0 flex-nowrap gap-0.5 rounded-full bg-neutral-100 p-0.5">
         {items.map((it) => (
@@ -175,6 +219,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                   <p className="flex items-center gap-1.5 text-xs text-neutral-200">
                     {phase === "speaking" && <span className="inline-block size-1.5 animate-pulse rounded-full bg-success-500" />}
                     {avatarState === "loading" ? "Loading your teacher…" : PHASE_LABEL[phase]}
+                    {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked}{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -188,6 +233,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                       {speakOn ? <SpeakerHigh className="size-4" /> : <SpeakerSlash className="size-4" />}
                     </button>
                   )}
+                  {optionsButton(true)}
                   {avatarUsable && avatarState === "on" && (
                     <button type="button" onClick={onToggleAvatar} className="rounded-full bg-white/15 p-1.5 text-white backdrop-blur hover:bg-white/25" title="Hide the teacher">
                       <EyeSlash className="size-4" />
@@ -206,6 +252,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
             <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
             <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>
           </div>
+          {scoreChip}
+          {optionsButton(false)}
           {avatarUsable && avatarState === "off" && (
             <button type="button" onClick={onToggleAvatar} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title="Show the teacher">
               <Eye className="size-4" />
@@ -229,23 +277,15 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </div>
       )}
 
-      {/* Progress and the learner's own dials, in one quiet strip. */}
-      {((stats && stats.asked > 0) || (onLanguage && (languages?.length ?? 0) > 1) || (voiceMode && onPace)) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          {stats && stats.asked > 0 && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">{stats.correct}/{stats.asked} right</span>
-              {stats.streak >= 2 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 font-medium text-warning-700">
-                  <Fire className="size-3.5" weight="fill" /> {stats.streak}
-                </span>
-              )}
-            </div>
-          )}
-          {onLanguage && (languages?.length ?? 0) > 1 && (
-            <Segmented label="Language" items={(languages ?? []).map((l) => ({ id: l, label: LANGUAGE_LABEL[l] }))} value={language} onPick={onLanguage} />
-          )}
-          {voiceMode && onPace && <Segmented label="Pace" items={PACES} value={pace} onPick={onPace} />}
+      {/* Language and pace live in a small popover so the conversation keeps the height. */}
+      {hasOptions && optionsOpen && (
+        <div className="relative">
+          <div ref={optionsRef} className="absolute inset-x-0 top-1 z-20 space-y-2 rounded-xl border border-neutral-200 bg-white p-3 shadow-lg" role="dialog" aria-label="Lesson options">
+            {onLanguage && (languages?.length ?? 0) > 1 && (
+              <Segmented label="Language" items={(languages ?? []).map((l) => ({ id: l, label: LANGUAGE_LABEL[l] }))} value={language} onPick={onLanguage} />
+            )}
+            {voiceMode && onPace && <Segmented label="Pace" items={PACES} value={pace} onPick={onPace} />}
+          </div>
         </div>
       )}
 
@@ -292,8 +332,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         )}
       </div>
 
-      <div className={`space-y-2 border-t border-neutral-200 pt-3 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
-        <div className="flex flex-wrap gap-1">
+      <div className={`space-y-1.5 border-t border-neutral-200 pt-2 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
+        <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap">
           {awaiting === "continue" && (
             <button
               type="button"
@@ -309,27 +349,23 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <button type="button" onClick={() => onControl("repeat")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><ArrowCounterClockwise className="size-3" /> Repeat</button>
           <button type="button" onClick={() => setAskMode((v) => !v)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs ${askMode ? "border-primary-500 bg-primary-50 text-primary-500" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}><Question className="size-3" /> Doubt</button>
           <button type="button" onClick={() => onControl("skip")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><SkipForward className="size-3" /> Skip</button>
-          <button type="button" onClick={onEnd} className="ms-auto rounded-full px-3 py-1 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-danger-600">End lesson</button>
+          <button type="button" onClick={onEnd} className="ms-auto shrink-0 rounded-full px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-danger-600">End</button>
         </div>
-        {voiceMode && (
-          <button
-            type="button"
-            onClick={onToggleMic}
-            disabled={phase === "thinking" || phase === "connecting"}
-            aria-pressed={micOn}
-            className={`flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
-              micOn ? "bg-danger-500 text-white animate-pulse" : "bg-primary-500 text-white hover:bg-primary-400"
-            }`}
-          >
-            <Microphone className="size-5" weight="fill" />
-            {micOn
-              ? "Listening… tap when you're done"
-              : awaiting === "answer"
-                ? "Tap to answer"
-                : "Tap to speak"}
-          </button>
-        )}
         <div className="flex items-center gap-2">
+          {voiceMode && (
+            <button
+              type="button"
+              onClick={onToggleMic}
+              disabled={phase === "thinking" || phase === "connecting"}
+              aria-pressed={micOn}
+              className={`flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                micOn ? "bg-danger-500 text-white animate-pulse" : "bg-primary-500 text-white hover:bg-primary-400"
+              }`}
+            >
+              <Microphone className="size-5" weight="fill" />
+              {micOn ? "Done" : awaiting === "answer" ? "Answer" : "Speak"}
+            </button>
+          )}
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
