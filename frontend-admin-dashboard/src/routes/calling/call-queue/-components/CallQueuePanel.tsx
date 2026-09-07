@@ -340,8 +340,15 @@ function QueueRow({
             <TableCell className="text-sm text-neutral-500">
                 {waiting && item.aheadInLane != null ? item.aheadInLane + 1 : '—'}
             </TableCell>
+            {/* Name first; the number is the subtitle. Showing only a number made the
+                column read as empty to anyone scanning for a person. */}
             <TableCell className="text-sm text-neutral-900">
-                {item.phoneNumber || item.userId || '—'}
+                <div className="flex flex-col">
+                    <span>{item.leadName || item.phoneNumber || item.userId || '—'}</span>
+                    {item.leadName && item.phoneNumber && (
+                        <span className="text-xs text-neutral-500">{item.phoneNumber}</span>
+                    )}
+                </div>
             </TableCell>
             <TableCell className="text-sm text-neutral-700">{item.agentName || '—'}</TableCell>
             <TableCell className="text-sm text-neutral-600">{sourceLabel(item)}</TableCell>

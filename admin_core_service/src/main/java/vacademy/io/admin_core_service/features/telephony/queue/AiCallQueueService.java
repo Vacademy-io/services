@@ -505,11 +505,14 @@ public class AiCallQueueService {
                 .statusReason(item.getStatusReason())
                 .responseId(item.getResponseId())
                 .userId(item.getUserId())
+                .leadName(names.leadName(item.getResponseId()))
                 // A queued row often has no phone of its own — the number is resolved
-                // downstream at dial time — so fall back to what was actually dialled
-                // rather than leaving the column showing a raw id.
-                .phoneNumber(item.getPhoneNumber() != null ? item.getPhoneNumber()
-                        : (call == null ? null : call.toNumber()))
+                // downstream at dial time — so fall back to what was actually dialled,
+                // then to the number on the lead's CRM record, rather than leaving the
+                // column showing a raw id.
+                .phoneNumber(firstNonBlank(item.getPhoneNumber(),
+                        call == null ? null : call.toNumber(),
+                        names.leadMobile(item.getResponseId())))
                 .campaignId(item.getCampaignId())
                 .campaignName(item.getCampaignName())
                 .attempts(item.getAttempts())
