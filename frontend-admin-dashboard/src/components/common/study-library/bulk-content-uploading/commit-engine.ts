@@ -19,7 +19,7 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { DEFAULT_ENTITY_NAME, isSyntheticRootNode, normalizeName } from './conventions';
 import { createChapter, createModule, createSubject } from './hierarchy-api';
 import { findExistingChapter } from './matching';
-import { openManifest } from './session-manifest';
+import { openManifest, type SessionManifest } from './session-manifest';
 import { getCurrentZipHandle } from './zip-parser';
 import { extractDirectFile, hasDirectFiles } from './file-source';
 import {
@@ -61,6 +61,25 @@ interface CommitScope {
     getDefaults: () => SectionDefaults;
     setDefaults: (defaults: SectionDefaults) => void;
 }
+
+/**
+ * End-of-scope manifest handling.
+ *
+ * The manifest exists so an INTERRUPTED run can resume without re-uploading.
+ * Once a scope finishes with nothing left failed or blocked it has done its
+ * job, and keeping it is actively harmful: it is keyed only by
+ * course|batch|zip-fingerprint, so re-uploading the same zip later would mark
+ * every slide "already done" from the previous run and create none of them —
+ * which silently produces empty chapters when the earlier content has since
+ * been deleted. Keep it only while there is work left to resume.
+ */
+const finishManifest = (manifest: SessionManifest, items: BulkItem[]): void => {
+    const hasUnfinished = items.some(
+        (item) => item.status === 'failed' || item.status === 'blocked'
+    );
+    if (hasUnfinished) manifest.flush();
+    else manifest.clear();
+};
 
 /** Pick the file source for this run: in-memory selection (CSV direct mode) or the zip. */
 const buildExtractFile = (): PipelineCtx['extractFile'] => {
@@ -420,7 +439,7 @@ const commitScope = async (
         }
     }
 
-    manifest.flush();
+    finishManifest(manifest, scopedItems());
 };
 
 /**
@@ -543,7 +562,10 @@ const runCsvCommit = async (deps: CommitDeps, shared: SharedRunResources): Promi
                 }
             }
         }
-        manifest.flush();
+        finishManifest(
+            manifest,
+            Object.values(state().items).filter((item) => item.sectionId === section.id)
+        );
     }
 
     state().setPhase('results');
