@@ -459,7 +459,7 @@ public class AudienceController {
             entityType = "LEAD",
             action = "CONVERT",
             entityIdExpr = "#userId",
-            descriptionExpr = "'marked lead ' + @crmAuditNarrator.personFor(#userId) + ' as converted'")
+            descriptionExpr = "'marked lead ' + @crmAuditNarrator.leadUserFor(#userId) + ' as converted'")
     public ResponseEntity<UserLeadProfileDTO> markLeadConverted(
             @RequestParam String userId,
             @RequestParam String instituteId) {
@@ -476,7 +476,7 @@ public class AudienceController {
             entityType = "LEAD",
             action = "STATUS_CHANGE",
             entityIdExpr = "#userId",
-            descriptionExpr = "'changed lead status of ' + @crmAuditNarrator.personFor(#userId) + ' to ' + #status")
+            descriptionExpr = "'changed lead status of ' + @crmAuditNarrator.leadUserFor(#userId) + ' to ' + #status")
     public ResponseEntity<UserLeadProfileDTO> updateLeadStatus(
             @RequestParam String userId,
             @RequestParam String instituteId,
@@ -520,7 +520,7 @@ public class AudienceController {
             entityType = "LEAD",
             action = "TIER_CHANGE",
             entityIdExpr = "#userId",
-            descriptionExpr = "'changed lead tier of ' + @crmAuditNarrator.personFor(#userId) + ' to ' + #tier")
+            descriptionExpr = "'changed lead tier of ' + @crmAuditNarrator.leadUserFor(#userId) + ' to ' + #tier")
     public ResponseEntity<UserLeadProfileDTO> updateLeadTier(
             @RequestParam String userId,
             @RequestParam String instituteId,
