@@ -1445,6 +1445,33 @@ def test_plain_hindi_register_rule_targets_the_words_actually_used():
     assert "PHONE HINDI" not in en
 
 
+def test_warm_question_rule_reaches_every_prompt_branch(monkeypatch):
+    """Founder, 2026-09-08, live-testing the yoga agent: "it's asking questions as
+    if she is my mother — 'hey, do you take live classes?' is not the right way...
+    humanize the prompt, and inculcate this into AI calling in general". "In
+    general" means the rule must ride the platform, not one authored script — so
+    it must appear for BOTH the authored-prompt branch and the thin-prompt
+    scaffold, and honour its kill switch."""
+    MARK = "ASK LIKE A PERSON, NOT A FORM"
+    authored = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+    assert MARK in authored
+    thin = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert MARK in thin
+    monkeypatch.setenv("WARM_QUESTIONS_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()  # get_settings is lru_cached; force a re-read of the env
+    try:
+        off = b.build_system_prompt({"agent": {
+            "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+            "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+        assert MARK not in off
+    finally:
+        _gs.cache_clear()  # never leave the off-switch cached for later tests
+
+
 def test_language_switch_on_request_is_permanent():
     """Founder: "if users asks that i want to talk in english it should then talk
     only in english". The old rule allowed the switch but said nothing about

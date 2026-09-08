@@ -889,6 +889,9 @@ V430/V431 (edge pricing + discount), **V448** (`institute_telephony_config.role`
 `END_GRACE_SECS=2.0`, `MAX_DEAF_STREAK=2`, `MACHINE_GREETING_WINDOW_SECS=22`,
 `FILLER_PROBABILITY=0.10`, `FILLER_PHRASES=Hmm…`, `NO_REPEAT_ENABLED=true`,
 `NO_ECHO_ENABLED=true` (§7.3a — drop an opener that only parrots the caller's answer),
+`WARM_QUESTIONS_ENABLED=true` (prompt rule for every agent: cushion a question with one
+clause of assumption/reason/their-last-answer instead of firing it bare — founder feedback
+2026-09-08, "it's asking questions as if she is my mother"),
 `REPLY_INFLIGHT_GRACE_SECS=6.0`, `REPORT_REQUIRE_CONVERSATION=true`,
 `REPORT_SPOOL_MAX_AGE_SECS=1200`.
 

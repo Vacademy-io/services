@@ -2196,6 +2196,23 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         + " TWO EXCEPTIONS, and only these: read a phone number back once digit by digit, "
         "and read a booked day and time back once. Everything else, never."
     )
+    # Founder, 2026-09-08, after live-testing the yoga agent: "it's asking questions
+    # as if she is my mother. 'Hey, do you take live classes?' is not the right way —
+    # first tell about yourself, soften it, THEN ask." A bare question with no
+    # context reads as an interrogation; the same question cushioned by one clause
+    # of assumption or reason reads as conversation. One clause only — cushions are
+    # exactly the place models balloon a turn.
+    warm_question_rule = (
+        "- ASK LIKE A PERSON, NOT A FORM. Never fire a bare survey question at the caller "
+        "('Do you take live classes?'). Cushion it with ONE short clause first, in one of "
+        "three ways, then ask: a soft everyday assumption ('You'd be running your sessions "
+        "online these days, I suppose — are those live, or recorded?'); the reason you're "
+        "asking ('Just so I only tell you what's relevant — roughly how many members do you "
+        "have?'); or their own last answer ('Since you're sending the link out yourself every "
+        "morning — what happens for someone who joins late?'). ONE clause of cushion, ONE "
+        "question, then stop. Direct is still fine for tiny follow-ups ('And on weekends?')."
+        if get_settings().warm_questions_enabled else ""
+    )
     # Live call went out in the evening but opened 'Good morning' — the authored script
     # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
     # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
@@ -2417,6 +2434,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             plain_speech_rule,
             fast_open_rule,
             no_echo_rule,
+            warm_question_rule,
             one_step_rule,
             goal_drive_rule,
             lead_name_line,
@@ -2451,6 +2469,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         plain_speech_rule,
         fast_open_rule,
         no_echo_rule,
+        warm_question_rule,
         one_step_rule,
         goal_drive_rule,
         ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "

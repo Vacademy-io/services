@@ -447,6 +447,12 @@ class Settings:
     # re-delivered the intro on calls 17be14f2/761decff — see bot.RunGuard.
     run_guard_enabled: bool = field(
         default_factory=lambda: _env("RUN_GUARD_ENABLED", "true").lower() == "true")
+    # Cushion questions in context instead of firing them bare ("Do you take live
+    # classes?") — founder 2026-09-08, "it's asking questions as if she is my
+    # mother... humanize the prompt, inculcate this into AI calling in general".
+    # Prompt rule, injected for every agent; kill switch keeps the same shape.
+    warm_questions_enabled: bool = field(
+        default_factory=lambda: _env("WARM_QUESTIONS_ENABLED", "true").lower() == "true")
     # Edge read-aloud default voice. hi-IN-SwaraNeural (F) / hi-IN-MadhurNeural (M)
     # are the only Hindi ones; the en-IN trio is Neerja, NeerjaExpressive, Prabhat.
     edge_tts_voice: str = field(
