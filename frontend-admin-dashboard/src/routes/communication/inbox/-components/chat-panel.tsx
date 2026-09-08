@@ -76,8 +76,10 @@ export function ChatPanel({ onLoadOlder }: Props) {
             </div>
 
             {/* The chatbot stepped aside on this conversation — say so, and say why, so the
-                admin knows what they are answering before scrolling the thread. */}
-            {selectedConvo?.awaitingReply && (
+                admin knows what they are answering before scrolling the thread. Keyed on the
+                escalation itself: awaitingReply is true for any chat the person spoke last on, and
+                this banner has a reason to show only when the bot actually handed over. */}
+            {!!selectedConvo?.escalationId && (
                 <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 shrink-0">
                     <HandWaving size={16} className="mt-0.5 shrink-0 text-amber-600" />
                     <div className="min-w-0 text-xs text-amber-800">

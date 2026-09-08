@@ -25,9 +25,9 @@ public class WhatsAppInboxController {
     private final ChatbotEscalationService escalationService;
 
     /**
-     * @param filter UNANSWERED — only conversations the chatbot handed over that nobody has
-     *               answered; FAILED — only conversations with an undelivered message; omitted
-     *               or ALL — everything.
+     * @param filter UNANSWERED — only conversations where the learner spoke last and nobody has
+     *               replied, plus any open chatbot hand-over; FAILED — only conversations with an
+     *               undelivered message; omitted or ALL — everything.
      */
     @GetMapping("/conversations")
     public ResponseEntity<List<InboxConversationDTO>> getConversations(

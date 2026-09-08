@@ -117,8 +117,11 @@ export function InboxPage() {
         }
     };
 
-    // Conversations on the current page that the chatbot handed over and nobody has answered.
-    const waitingCount = useInboxStore((s) => s.conversations).filter((c) => c.awaitingReply).length;
+    // Conversations on the current page the chatbot handed over and nobody has closed. Counting
+    // escalations rather than every unanswered chat keeps this an honest number: hand-overs are
+    // few, so the page almost always holds all of them, while "unanswered" runs into the hundreds
+    // and a page-scoped count of those would read like a total and be wrong.
+    const waitingCount = useInboxStore((s) => s.conversations).filter((c) => c.escalationId).length;
 
     return (
         <div className="flex flex-col h-full">
@@ -130,7 +133,7 @@ export function InboxPage() {
                         View and reply to WhatsApp conversations
                         {waitingCount > 0 && (
                             <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-px font-medium text-amber-700">
-                                {waitingCount} waiting for a reply
+                                {waitingCount} handed over by the bot
                             </span>
                         )}
                     </p>
