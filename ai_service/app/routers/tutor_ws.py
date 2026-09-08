@@ -71,7 +71,7 @@ MAX_TURNS_PER_SESSION = 400
 LANG_TO_STT = {"en": "en-IN", "hi": "hi-IN"}
 # Pace, segmentation and cache keys are shared with the voice warm-up (runtime/speech.py).
 from ..services.tutor.runtime.speech import (  # noqa: E402
-    DEFINITION_PACE, PACE_MULTIPLIER, PACE_ORDER, TUTOR_SEGMENT_MAX_CHARS, cache_key as _cache_key, effective_pace,
+    DEFINITION_PACE, PACE_MULTIPLIER, PACE_ORDER, TUTOR_SEGMENT_MAX_CHARS, cache_key as _cache_key, spoken_form as _spoken_form, effective_pace,
     step_pace as _step_pace, tutor_segments as _tutor_segments,
 )
 QUESTION_BEAT_MS = 450
@@ -401,7 +401,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 # marked for those sentences as the segment starts playing.
                 await _send({"type": "segment_text", "text": segment, "index": first_idx, "count": n_sent})
                 seg_pace = _effective_pace(segment)
-                key = _cache_key(tts_provider, voice, _lang_stt(), str(seg_pace), segment)
+                # What the engine hears: "9/16" as "9 by 16", not a date.
+                spoken = _spoken_form(segment, lang)
+                key = _cache_key(tts_provider, voice, _lang_stt(), str(seg_pace), spoken)
                 audio = _cache_get(key)
                 provider_used = tts_provider
                 if audio is None:
@@ -418,7 +420,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                         svc.bump_telemetry(tutor_session_id, tts_prepared_hits=1)
                 if audio is None:
                     audio, _mime, provider_used = await synthesize_speech(
-                        text=segment, language=_lang_stt(), voice=voice, provider=tts_provider,
+                        text=spoken, language=_lang_stt(), voice=voice, provider=tts_provider,
                         pace=seg_pace,
                     )
                     if audio:
@@ -430,7 +432,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                         svc.bump_telemetry(tutor_session_id, tts_chars=len(segment))
                         if provider_used == tts_provider:
                             _fire_and_forget(voice_cache.store(key, provider=tts_provider, voice=voice, lang=_lang_stt(),
-                                                               pace=str(seg_pace), text_=segment, audio=audio, mime=_mime))
+                                                               pace=str(seg_pace), text_=spoken, audio=audio, mime=_mime))
                 else:
                     svc.bump_telemetry(tutor_session_id, tts_cache_hits=1)
                 if not audio:

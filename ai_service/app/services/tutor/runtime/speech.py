@@ -54,3 +54,45 @@ def effective_pace(base_pace: float, learner_pace: str, segment: str = "") -> fl
 
 def cache_key(provider: str, voice: str, lang: str, pace: str, text_: str) -> str:
     return hashlib.sha256(f"{provider}|{voice}|{lang}|{pace}|{text_}".encode("utf-8")).hexdigest()
+
+
+# ── what the voice actually says ─────────────────────────────────────────────
+# Engines read "9/16" as September 16th and "m/s²" as gibberish. The board and
+# the transcript keep the notation; only the audio gets the spoken form.
+
+_WORDS = {
+    "en": {"by": " by ", "into": " into ", "div": " divided by ", "eq": " equals ", "neq": " is not equal to ",
+           "plus": " plus ", "minus": " minus ", "sq": " squared", "cube": " cubed", "pow": " to the power ",
+           "root": " root ", "pct": " percent", "ge": " greater than or equal to ", "le": " less than or equal to ",
+           "gives": " gives ", "isto": " is to ", "mps": " metres per second", "kmph": " kilometres per hour",
+           "mps2": " metres per second squared"},
+    "hi": {"by": " बटा ", "into": " गुणा ", "div": " भाग ", "eq": " बराबर ", "neq": " बराबर नहीं ",
+           "plus": " जमा ", "minus": " घटा ", "sq": " का वर्ग", "cube": " का घन", "pow": " की घात ",
+           "root": " का वर्गमूल ", "pct": " प्रतिशत", "ge": " से बड़ा या बराबर ", "le": " से छोटा या बराबर ",
+           "gives": " से मिलता है ", "isto": " अनुपात ", "mps": " मीटर प्रति सेकंड", "kmph": " किलोमीटर प्रति घंटा",
+           "mps2": " मीटर प्रति सेकंड वर्ग"},
+}
+_FRACTION = re.compile(r"(?<![\d/.])(\d+)\s*/\s*(\d+)(?![\d/])")
+_RATIO3 = re.compile(r"\b(\d+(?:\s*:\s*\d+){2,})\b")
+_POW = re.compile(r"\^\s*\(?(-?\w+)\)?")
+_NUM_OP_NUM = re.compile(r"(?<=[\d)])\s*([+\-−–])\s*(?=[\d(])")
+
+
+def spoken_form(text_: str, lang: str = "en") -> str:
+    """The text handed to the voice engine: fractions, operators, powers,
+    percentages and the common physics units in words."""
+    if not text_:
+        return text_
+    w = _WORDS["hi" if str(lang).startswith("hi") else "en"]
+    t = text_
+    t = t.replace("m/s²", w["mps2"]).replace("m/s^2", w["mps2"]).replace(" m/s", w["mps"]).replace("km/h", w["kmph"])
+    t = _RATIO3.sub(lambda m: w["isto"].join(x.strip() for x in m.group(1).split(":")), t)
+    t = _FRACTION.sub(lambda m: f"{m.group(1)}{w['by']}{m.group(2)}", t)
+    t = t.replace("×", w["into"]).replace("÷", w["div"]).replace("≠", w["neq"]).replace("≥", w["ge"]).replace("≤", w["le"])
+    t = t.replace("²", w["sq"]).replace("³", w["cube"]).replace("√", w["root"]).replace("→", w["gives"])
+    t = _POW.sub(lambda m: w["sq"] if m.group(1) == "2" else w["cube"] if m.group(1) == "3" else f"{w['pow']}{m.group(1)}", t)
+    t = _NUM_OP_NUM.sub(lambda m: w["plus"] if m.group(1) == "+" else w["minus"], t)
+    t = t.replace(">=", w["ge"]).replace("<=", w["le"])
+    t = re.sub(r"(?<![=<>!])\s*=\s*(?!=)", w["eq"], t)
+    t = re.sub(r"(?<=\d)\s*%", w["pct"], t)
+    return re.sub(r"[ \t]{2,}", " ", t).strip()
