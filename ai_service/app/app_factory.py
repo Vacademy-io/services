@@ -94,6 +94,8 @@ async def _lifespan(app: FastAPI):
             ensure_tutor_tts_cache_schema(db)
             from .models.tutor_asset_registry import ensure_tutor_asset_registry_schema
             ensure_tutor_asset_registry_schema(db)
+            from .services.tutor.demo import ensure_tutor_demo_schema
+            ensure_tutor_demo_schema(db)
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)

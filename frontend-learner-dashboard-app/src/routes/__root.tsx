@@ -58,6 +58,7 @@ import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
+  "/try", // Public 3-minute tutor lesson (tutezy.ai)
   "/login",
   "/signup",
   "/register",
@@ -924,8 +925,14 @@ export const Route = createRootRouteWithContext<{
       throw redirect({ to: authed ? "/dashboard" : "/login" });
     }
 
+    // The public tutor lesson reuses the tutor route with a guest token.
+    const isGuestTutor =
+      location.pathname.startsWith("/study-library/courses/course-details/tutor") &&
+      new URLSearchParams(
+        (typeof window !== "undefined" && window.location.search) || location.search || "",
+      ).get("demo") === "1";
     // Skip all logic for public routes - they should work without any redirects
-    if (isPublicRoute(location.pathname)) {
+    if (isPublicRoute(location.pathname) || isGuestTutor) {
       console.log("[__root] Route is public, skipping authentication check");
       return;
     }

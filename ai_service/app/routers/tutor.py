@@ -25,6 +25,7 @@ from ..schemas.tutor import (
 )
 from ..schemas.tutor import CompileKbGrounding, CompileOptions
 from ..services.tutor import plan_store
+from ..services.tutor.runtime import state as sm
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
 from ..services.tutor.insights_export import insights_csv_text
@@ -594,6 +595,72 @@ async def tutor_options(
     return {"voices": voices, "models": models, "smallest_available": smallest_available(),
             "avatar_available": spatius_service.available(), "avatar_provider": "spatius" if spatius_service.available() else None,
             "avatars": avatars, "fees": _one_time_fees(db)}
+
+
+# ── public 3-minute demo (tutezy.ai; no auth) ────────────────────────────────
+
+class DemoStartRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    topic_key: str = Field(..., min_length=1, max_length=64)
+    language: Optional[str] = Field(default=None, pattern="^(en|hi)$")
+    mode: str = Field(default="VOICE", pattern="^(VOICE|TEXT)$")
+
+
+@router.get("/demo/topics", summary="Public: topics the free 3-minute lesson can teach")
+def demo_topics(db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services.tutor import demo
+    return demo.public_topics(db)
+
+
+@router.post("/demo/start", summary="Public: start a free, short, unbilled lesson as a guest")
+def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services.tutor import demo
+    c = demo.config(db)
+    if not (c["enabled"] and c["institute_id"] and c["package_session_id"] and c["topics"]):
+        raise HTTPException(status_code=503, detail="The free lesson is not available right now. Book a demo instead.")
+    topic = demo.topic_by_key(c["topics"], payload.topic_key)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Unknown topic")
+    ip = demo.client_ip(request)
+    iph = demo.ip_hash(ip)
+    reason = demo.grant_allowed(db, iph=iph, per_ip_per_day=c["per_ip_per_day"], daily_cap=c["daily_cap"])
+    if reason:
+        raise HTTPException(status_code=429, detail=reason)
+    name = demo.sanitize_name(payload.name)
+    user_id = demo.guest_user_id()
+    try:
+        boot = svc.start_session(user_id=user_id, institute_id=c["institute_id"], package_session_id=c["package_session_id"],
+                                 slide_id=str(topic["slide_id"]), mode=payload.mode,
+                                 language=payload.language or topic.get("language") or "en",
+                                 guest={"name": name, "minutes": c["minutes"]})
+    except (PermissionError, LookupError, ValueError) as e:
+        logger.warning("demo start failed for topic %s: %s", payload.topic_key, e)
+        raise HTTPException(status_code=503, detail="The free lesson is not ready right now. Book a demo instead.")
+    demo.record_grant(db, iph=iph, name=name, topic_key=payload.topic_key, tutor_session_id=boot["tutor_session_id"],
+                      user_agent=request.headers.get("user-agent") or "")
+    lesson: sm.LessonPlan = boot["lesson"]
+    settings: TutorSettings = boot["settings"]
+    token = demo.mint_guest_token(user_id=user_id, tutor_session_id=boot["tutor_session_id"], institute_id=c["institute_id"])
+    logger.info("demo lesson %s started (topic %s, ip %s…)", boot["tutor_session_id"], payload.topic_key, iph[:8])
+    return {
+        "token": token,
+        "minutes": c["minutes"],
+        "boot": {
+            "tutor_session_id": boot["tutor_session_id"],
+            "slide_id": lesson.slide_id,
+            "slide_title": lesson.slide_title,
+            "language": boot["language"],
+            "languages": [x for x in (settings.languages or ["en"]) if x in ("en", "hi")] or ["en"],
+            "resumed": False,
+            "teacher_name": c["teacher_name"] or settings.teacher_name,
+            "teacher_avatar_file_id": settings.teacher_avatar_file_id,
+            "learner_name": name,
+            "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics],
+            "progress": boot["pointer"].progress(lesson),
+            "socket_path": f"/tutor/ws/{boot['tutor_session_id']}",
+            "avatar": None,
+        },
+    }
 
 
 # ── registered assets (voices + avatars the institute may use) ───────────────

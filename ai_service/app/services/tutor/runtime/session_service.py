@@ -511,11 +511,13 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "language": ts.language, "started_slide_id": ts.started_slide_id,
             "settings": settings, "lesson": lesson, "state": state, "pointer": pointer,
             "previous_slide": previous,
-            "learner_name": learner_name(db, ts.user_id),
+            "learner_name": (ts.summary_json or {}).get("learner_name") or learner_name(db, ts.user_id),
             # What the teacher says about last time (model-written summary).
             "resume_line": prompts.resume_line(st.rolling_summary),
             "tts_provider": tts_provider, "tts_voice": tts_voice, "live_model": live_model,
-            "max_seconds": session_max_seconds(db),
+            "max_seconds": (int((ts.summary_json or {}).get("max_minutes") or 0) * 60) or session_max_seconds(db),
+            # Public demo: unbilled, short, no premium avatar.
+            "demo": bool((ts.summary_json or {}).get("demo")),
         }
 
 
@@ -552,7 +554,7 @@ def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id
 
 def start_session(
     *, user_id: str, institute_id: str, package_session_id: str, slide_id: Optional[str], mode: str,
-    language: Optional[str],
+    language: Optional[str], guest: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create the tutor session (+ its chat session for the transcript) and
     return everything the socket needs to open: settings, lesson, pointer."""
@@ -591,13 +593,15 @@ def start_session(
         ts = TutorSession(
             id=str(uuid4()), user_id=user_id, institute_id=institute_id, package_session_id=package_session_id,
             chat_session_id=chat.id, mode=mode, tts_provider=settings.tts_provider, tts_voice=settings.tts_voice,
-            language=lang, started_slide_id=target_slide, status="ACTIVE", summary_json={"turns": 0},
+            language=lang, started_slide_id=target_slide, status="ACTIVE",
+            # A public demo carries its own name, length and no-billing flag.
+            summary_json={"turns": 0, **({"demo": True, "learner_name": guest.get("name"), "max_minutes": guest.get("minutes")} if guest else {})},
         )
         db.add(ts)
         st.current_slide_id = target_slide
         st.updated_at = datetime.utcnow()
         db.commit()
-        name = learner_name(db, user_id)
+        name = (guest or {}).get("name") or learner_name(db, user_id)
         return {
             "tutor_session_id": ts.id, "chat_session_id": chat.id, "package_id": package_id,
             "package_name": package_name, "settings": settings, "lesson": lesson, "pointer": pointer,

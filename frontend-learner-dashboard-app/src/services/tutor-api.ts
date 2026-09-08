@@ -2,7 +2,7 @@
  * Live AI Tutor — learner-side REST (ai_service /tutor/v1). The socket lives in
  * hooks/useTutorSocket.ts.
  */
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import authenticatedAxiosInstance, { guestAxiosInstance } from "@/lib/auth/axiosInstance";
 import { AI_SERVICE_URL } from "@/constants/urls";
 
 const BASE = `${AI_SERVICE_URL}/tutor/v1`;
@@ -190,4 +190,33 @@ export const submitTutorQuizActivity = async (params: {
     `${SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG}?slideId=${slideId}&chapterId=${chapterId}&moduleId=${moduleId}&subjectId=${subjectId}&packageSessionId=${packageSessionId}&userId=${userId}`,
     payload,
   );
+};
+
+// ── public 3-minute demo (no auth) ───────────────────────────────────────────
+
+export interface TutorDemoTopic {
+  key: string;
+  title: string;
+  emoji?: string;
+  language?: "en" | "hi";
+}
+
+export const getTutorDemoTopics = async (): Promise<{ enabled: boolean; minutes: number; topics: TutorDemoTopic[] }> => {
+  const res = await guestAxiosInstance.get(`${BASE}/demo/topics`);
+  return res.data;
+};
+
+export const startTutorDemo = async (params: {
+  name: string;
+  topicKey: string;
+  language?: "en" | "hi";
+  mode: "VOICE" | "TEXT";
+}): Promise<{ token: string; minutes: number; boot: TutorStartResponse }> => {
+  const res = await guestAxiosInstance.post(`${BASE}/demo/start`, {
+    name: params.name,
+    topic_key: params.topicKey,
+    language: params.language,
+    mode: params.mode,
+  });
+  return res.data;
 };

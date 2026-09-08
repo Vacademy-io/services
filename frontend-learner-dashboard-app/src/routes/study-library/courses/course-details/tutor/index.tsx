@@ -22,6 +22,7 @@ import {
 } from "@/services/tutor-api";
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
 import { submitTutorQuizActivity } from "@/services/tutor-api";
+import { readTutorGuest, writeTutorGuest } from "@/lib/tutorGuest";
 
 interface TutorSearch {
   courseId: string;
@@ -31,6 +32,8 @@ interface TutorSearch {
   subjectId?: string;
   moduleId?: string;
   mode?: "text" | "voice";
+  /** "1": the public guest lesson — session and token come from sessionStorage, nothing is written back. */
+  demo?: string;
 }
 
 export const Route = createFileRoute("/study-library/courses/course-details/tutor/")({
@@ -43,6 +46,7 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
     subjectId: search.subjectId ? String(search.subjectId) : undefined,
     moduleId: search.moduleId ? String(search.moduleId) : undefined,
     mode: search.mode === "voice" ? "voice" : "text",
+    demo: search.demo === "1" ? "1" : undefined,
   }),
 });
 
@@ -357,6 +361,7 @@ function TutorPage() {
 
   // ── socket ──
   const socket = useTutorSocket({
+    getToken: () => guestRef.current?.token,
     onReady: (ev) => {
       setDisconnected(null);
       setPhase("idle");
@@ -503,12 +508,13 @@ function TutorPage() {
         if (slideType === "QUIZ" || (ev.quiz_results?.length ?? 0) > 0) {
           // A quiz is completed through its activity log (the tracking
           // service rejects a manual mark); the server graded each answer.
+          if (isDemo) return;
           await submitTutorQuizActivity({
             slideId: ev.slide_id, packageSessionId: search.packageSessionId, ...ids,
             results: ev.quiz_results ?? [],
           });
         } else {
-          await markSlideCompletion({
+          if (!isDemo) await markSlideCompletion({
             slideId: ev.slide_id,
             slideType,
             ...ids,
@@ -629,6 +635,9 @@ function TutorPage() {
   }, [voiceMode, awaiting, phase, micOn, disconnected]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
+  const isDemo = search.demo === "1";
+  const guestRef = useRef(isDemo ? readTutorGuest() : null);
+
   const bootSession = useCallback(async () => {
     const seq = ++bootSeq.current;
     setFatal(null);
@@ -636,8 +645,10 @@ function TutorPage() {
     setPhase("connecting");
     try {
       const [b, slides] = await Promise.all([
-        startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
-        search.chapterId ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
+        isDemo
+          ? (guestRef.current ? Promise.resolve(guestRef.current.boot) : Promise.reject(new Error("Your free lesson has expired. Start again from tutezy.ai.")))
+          : startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
+        search.chapterId && !isDemo ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
       ]);
       if (seq !== bootSeq.current) {
         // The page moved on while the request was in flight: close what we opened.
@@ -726,6 +737,11 @@ function TutorPage() {
     stopAudio();
     socket.sendEndSession();
     setTimeout(() => {
+      if (isDemo) {
+        writeTutorGuest(null);
+        navigate({ to: "/try", search: { done: "1" } as never });
+        return;
+      }
       navigate({ to: "/study-library/courses/course-details", search: { courseId: search.courseId, packageSessionId: search.packageSessionId } as never });
     }, 400);
   };
@@ -829,7 +845,15 @@ function TutorPage() {
           )}
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-0">
-          {disconnected && (
+          {disconnected && isDemo && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-neutral-800">
+              <span className="font-semibold">{disconnected.reason === "limit" ? "That was your free lesson." : "The lesson ended."}</span>
+              <span>Every student of yours could learn like this, on your own content.</span>
+              <a href="https://tutezy.ai/#demo" className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">Book a demo</a>
+              <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">Done</button>
+            </div>
+          )}
+          {disconnected && !isDemo && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
               {disconnected.reason !== "credits" && (

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyIndexRouteImport } from './routes/verify/index'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
+import { Route as TryIndexRouteImport } from './routes/try/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as SubOrgRegistrationIndexRouteImport } from './routes/sub-org-registration/index'
 import { Route as SubOrgLearnersIndexRouteImport } from './routes/sub-org-learners/index'
@@ -127,6 +128,11 @@ const VerifyIndexRoute = VerifyIndexRouteImport.update({
 const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   id: '/user-profile/',
   path: '/user-profile/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TryIndexRoute = TryIndexRouteImport.update({
+  id: '/try/',
+  path: '/try/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsAndConditionsIndexRoute = TermsAndConditionsIndexRouteImport.update({
@@ -756,6 +762,7 @@ export interface FileRoutesByFullPath {
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
+  '/try': typeof TryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/verify': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -866,6 +873,7 @@ export interface FileRoutesByTo {
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
+  '/try': typeof TryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/verify': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -977,6 +985,7 @@ export interface FileRoutesById {
   '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
   '/sub-org-registration/': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
+  '/try/': typeof TryIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/verify/': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -1090,6 +1099,7 @@ export interface FileRouteTypes {
     | '/sub-org-learners'
     | '/sub-org-registration'
     | '/terms-and-conditions'
+    | '/try'
     | '/user-profile'
     | '/verify'
     | '/login/oauth/learner'
@@ -1200,6 +1210,7 @@ export interface FileRouteTypes {
     | '/sub-org-learners'
     | '/sub-org-registration'
     | '/terms-and-conditions'
+    | '/try'
     | '/user-profile'
     | '/verify'
     | '/login/oauth/learner'
@@ -1310,6 +1321,7 @@ export interface FileRouteTypes {
     | '/sub-org-learners/'
     | '/sub-org-registration/'
     | '/terms-and-conditions/'
+    | '/try/'
     | '/user-profile/'
     | '/verify/'
     | '/login/oauth/learner'
@@ -1422,6 +1434,7 @@ export interface RootRouteChildren {
   SubOrgLearnersIndexRoute: typeof SubOrgLearnersIndexRoute
   SubOrgRegistrationIndexRoute: typeof SubOrgRegistrationIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
+  TryIndexRoute: typeof TryIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   VerifyIndexRoute: typeof VerifyIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
@@ -1498,6 +1511,13 @@ declare module '@tanstack/react-router' {
       path: '/user-profile'
       fullPath: '/user-profile'
       preLoaderRoute: typeof UserProfileIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/try/': {
+      id: '/try/'
+      path: '/try'
+      fullPath: '/try'
+      preLoaderRoute: typeof TryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms-and-conditions/': {
@@ -2334,6 +2354,7 @@ const rootRouteChildren: RootRouteChildren = {
   SubOrgLearnersIndexRoute: SubOrgLearnersIndexRoute,
   SubOrgRegistrationIndexRoute: SubOrgRegistrationIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
+  TryIndexRoute: TryIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   VerifyIndexRoute: VerifyIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,

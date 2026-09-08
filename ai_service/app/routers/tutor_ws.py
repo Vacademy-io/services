@@ -329,6 +329,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         tts_voice = ctx["tts_voice"]
         live_model: Optional[str] = ctx.get("live_model")
         max_seconds = int(ctx.get("max_seconds") or SESSION_MAX_SECONDS)
+        is_demo = bool(ctx.get("demo"))
         # What the learner answered per concept this session; quiz slides
         # write it back as a quiz activity log when the slide is done.
         attempt_log: Dict[str, Dict[str, Any]] = {}
@@ -628,6 +629,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             minute = 0
             while True:
                 minute += 1
+                if is_demo:
+                    # The public taste is on the house: telemetry only.
+                    svc.bump_telemetry(tutor_session_id, minutes_charged=0)
+                    await asyncio.sleep(LIVE_METER_SECONDS)
+                    continue
                 ok = await asyncio.to_thread(svc.bill_live_minute, tutor_session_id=tutor_session_id,
                                              institute_id=institute_id, user_id=user_id, minute_no=minute)
                 if avatar_active:
