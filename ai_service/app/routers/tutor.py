@@ -615,6 +615,7 @@ def demo_topics(db: Session = Depends(db_dependency)) -> Dict[str, Any]:
 
 @router.post("/demo/start", summary="Public: start a free, short, unbilled lesson as a guest")
 def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..services import spatius_service
     from ..services.tutor import demo
     c = demo.config(db)
     if not (c["enabled"] and c["institute_id"] and c["package_session_id"] and c["topics"]):
@@ -659,9 +660,42 @@ def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depend
             "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics],
             "progress": boot["pointer"].progress(lesson),
             "socket_path": f"/tutor/ws/{boot['tutor_session_id']}",
-            "avatar": None,
+            # Premium avatar of the demo institute, in voice lessons (unbilled like the rest).
+            "avatar": ({"provider": "spatius", "avatar_id": settings.avatar_id, "app_id": spatius_service.app_id()}
+                       if settings.avatar_provider == "spatius" and settings.avatar_id and spatius_service.available()
+                       and payload.mode == "VOICE" else None),
         },
     }
+
+
+class DemoAvatarTokenRequest(BaseModel):
+    tutor_session_id: str = Field(..., min_length=1, max_length=64)
+
+
+@router.post("/demo/avatar-token", summary="Public: Spatius session token for a guest lesson (guest JWT in Authorization)")
+async def demo_avatar_token(payload: DemoAvatarTokenRequest, authorization: Optional[str] = Header(default=None),
+                            db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+    from ..core.security import decode_access_token
+    from ..models.tutor_session import TutorSession
+    from ..services import spatius_service
+    from ..services.tutor import demo
+    token = (authorization or "").replace("Bearer", "").strip()
+    claims = decode_access_token(token) if token else None
+    if not claims or str(claims.get("demo") or "") != payload.tutor_session_id:
+        raise HTTPException(status_code=401, detail="Guest token required")
+    ts = db.get(TutorSession, payload.tutor_session_id)
+    if ts is None or ts.status != "ACTIVE" or ts.user_id != str(claims.get("user") or ""):
+        raise HTTPException(status_code=404, detail="Session not found")
+    c = demo.config(db)
+    pkg = svc.package_of_session(db, ts.package_session_id)
+    s = resolve_settings(db, package_id=pkg[0] if pkg else "", institute_id=c["institute_id"] or ts.institute_id)
+    if not (s.avatar_provider == "spatius" and s.avatar_id and spatius_service.available()):
+        raise HTTPException(status_code=404, detail="This lesson has no teacher avatar")
+    try:
+        tok = await spatius_service.mint_session_token()
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {**tok, "avatar_id": s.avatar_id, "provider": "spatius"}
 
 
 # ── registered assets (voices + avatars the institute may use) ───────────────

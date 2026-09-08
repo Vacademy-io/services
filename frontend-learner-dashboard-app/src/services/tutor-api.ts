@@ -220,3 +220,13 @@ export const startTutorDemo = async (params: {
   });
   return res.data;
 };
+
+/** Guest lessons: the Spatius token for the demo avatar, authenticated with the guest JWT. */
+export const getTutorDemoAvatarToken = async (tutorSessionId: string, guestToken: string): Promise<TutorAvatarToken> => {
+  const res = await guestAxiosInstance.post<TutorAvatarToken>(
+    `${BASE}/demo/avatar-token`,
+    { tutor_session_id: tutorSessionId },
+    { headers: { Authorization: `Bearer ${guestToken}` } }
+  );
+  return res.data;
+};

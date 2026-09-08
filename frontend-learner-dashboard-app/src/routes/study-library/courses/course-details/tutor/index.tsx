@@ -16,6 +16,7 @@ import {
   endTutorSession,
   getTutorAvatarToken,
   getTutorChapterSlides,
+  getTutorDemoAvatarToken,
   startTutorSession,
   type TutorChapterSlide,
   type TutorStartResponse,
@@ -668,7 +669,9 @@ function TutorPage() {
         avatarBootedRef.current = true;
         void (async () => {
           try {
-            const tok = await getTutorAvatarToken(b.tutor_session_id);
+            const tok = guestRef.current
+              ? await getTutorDemoAvatarToken(b.tutor_session_id, guestRef.current.token)
+              : await getTutorAvatarToken(b.tutor_session_id);
             const container = avatarContainerRef.current;
             if (!container) return;
             await avatar.mount({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token }, container);
@@ -919,7 +922,9 @@ function TutorPage() {
             onRetryAvatar={async () => {
               if (!sessionRef.current) return;
               try {
-                const tok = await getTutorAvatarToken(sessionRef.current);
+                const tok = guestRef.current
+                  ? await getTutorDemoAvatarToken(sessionRef.current, guestRef.current.token)
+                  : await getTutorAvatarToken(sessionRef.current);
                 await avatar.retry({ provider: "spatius", app_id: tok.app_id, avatar_id: tok.avatar_id, session_token: tok.session_token });
                 setAvatarOn(true);
               } catch {
