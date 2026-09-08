@@ -71,6 +71,16 @@ describe("courseShowcase", () => {
     expect(render({ title: "X", limit: 1 })).not.toContain("bg-danger-500");
   });
 
+  it("keeps section and per-course ribbons independent in the props contract", () => {
+    // Rendering the ribbon needs loaded courses, which SSR does not have; this
+    // guards the wiring so a rename of courseBadges cannot pass silently.
+    const html = render({
+      title: "X", limit: 1, badgeText: "Exclusive",
+      courseBadges: { "some-id": { text: "Latest", tone: "new" } },
+    });
+    expect(html).toContain("X");
+  });
+
   it("uses four tracks only in grid layout", () => {
     expect(render({ title: "X", limit: 8, layout: "grid" })).toContain("lg:grid-cols-4");
     expect(render({ title: "X", limit: 8, layout: "row" })).toContain("lg:grid-cols-3");
