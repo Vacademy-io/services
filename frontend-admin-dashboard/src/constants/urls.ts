@@ -346,6 +346,12 @@ export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiri
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
 export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/custom-field-values`;
+// Campaign attribution recorded against a learner (utm_source/medium/campaign),
+// written by the learner app on a successful submission. Base path, the userId
+// is appended by the caller.
+export const GET_USER_UTM_ATTRIBUTION = `${BASE_URL}/admin-core-service/v1/utm/user`;
+export const GET_UTM_CAMPAIGN_SUMMARY = `${BASE_URL}/admin-core-service/v1/utm/summary`;
+
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;

@@ -108,6 +108,7 @@ import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/route
 import { useTranslation } from "react-i18next";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
 
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
@@ -883,6 +884,16 @@ const EnrollByInvite = ({
         if (response?.user_id) {
           setSubmittedUserId(response.user_id);
         }
+        // Attribute HERE, not after payment: the next thing the browser does
+        // is leave for the gateway, so a report fired later would be lost on
+        // every abandoned cart — exactly the population a campaign report has
+        // to be able to see.
+        trackUtmAttribution({
+          instituteId,
+          userId: response?.user_id,
+          sourceType: "ENROLL_INVITE",
+          sourceId: inviteData?.id,
+        });
       } catch (error) {
         console.error("Form submission failed (non-blocking):", error);
         // We do not block the user; they can proceed to payment step without this
@@ -1514,6 +1525,16 @@ const EnrollByInvite = ({
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
+        // A FREE enrolment skips the abandoned-cart submit above, so this is
+        // the only place its campaign touch can be recorded. Before the
+        // redirect branch — a configured redirectPath leaves the page.
+        trackUtmAttribution({
+          instituteId,
+          userId: submittedUserId || undefined,
+          email: form.getValues()?.email as string | undefined,
+          sourceType: "ENROLL_INVITE",
+          sourceId: inviteData?.id,
+        });
         if (inviteConfig?.redirectPath) {
           window.location.href = inviteConfig.redirectPath;
           return;

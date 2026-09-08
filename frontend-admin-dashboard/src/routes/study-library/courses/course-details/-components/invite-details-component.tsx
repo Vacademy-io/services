@@ -309,6 +309,7 @@ const InviteDetailsComponent = ({
                                                                         inviteCode={
                                                                             inviteLink.invite_code
                                                                         }
+                                                                        inviteName={inviteLink.name}
                                                                     />
                                                                     {inviteLink.tag ===
                                                                     'DEFAULT' ? (
