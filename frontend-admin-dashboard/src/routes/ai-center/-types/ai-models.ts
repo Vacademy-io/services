@@ -8,6 +8,18 @@ import type { TFunction } from 'i18next';
  *  `useTranslation([...])` array so it's loaded before this runs. */
 const NAMESPACE = 'aiCenterAiModels';
 
+/**
+ * Default model for answer-sheet AI evaluation (copy-check).
+ *
+ * Deliberately a standard-tier model. The copy-check pipeline's own default
+ * (ai_service `grader.py` DEFAULT_MODEL) is this same model; the picker used to
+ * default to an ultra-tier preview model, which silently overrode it and billed
+ * ~13x more per copy (a measured 133.62 credits vs the 10-credit floor on a
+ * 10-question paper) — most of that spend being reasoning tokens priced at
+ * $12/M output. Keep FE and pipeline defaults in sync.
+ */
+export const DEFAULT_EVALUATION_MODEL = 'google/gemini-2.5-flash-lite';
+
 export interface ModelInfo {
     id: string;
     name: string;
@@ -24,6 +36,16 @@ export interface ModelInfo {
 export const buildModelDisplayNames = (
     t: TFunction
 ): Record<string, { name: string; description: string }> => ({
+    // Standard-tier first: these are the cost-sane choices and the list order
+    // drives the Select's option order.
+    'google/gemini-2.5-flash-lite': {
+        name: t('models.gemini25FlashLite.name', { ns: NAMESPACE }),
+        description: t('models.gemini25FlashLite.description', { ns: NAMESPACE }),
+    },
+    'google/gemini-2.5-flash': {
+        name: t('models.gemini25Flash.name', { ns: NAMESPACE }),
+        description: t('models.gemini25Flash.description', { ns: NAMESPACE }),
+    },
     'anthropic/claude-opus-4.5': {
         name: t('models.claudeOpus45.name', { ns: NAMESPACE }),
         description: t('models.claudeOpus45.description', { ns: NAMESPACE }),

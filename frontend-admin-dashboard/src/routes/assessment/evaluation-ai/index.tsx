@@ -14,6 +14,7 @@ import {
     getEvaluationProcesses,
     triggerAIEvaluation,
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
+import { DEFAULT_EVALUATION_MODEL } from '@/routes/ai-center/-types/ai-models';
 
 export const Route = createFileRoute('/assessment/evaluation-ai/')({
     validateSearch: (search: Record<string, unknown>) => ({
@@ -76,7 +77,7 @@ function RouteComponent() {
 
     const retryMutation = useMutation({
         mutationFn: (attemptId: string) =>
-            triggerAIEvaluation([attemptId], 'google/gemini-3.1-pro-preview'),
+            triggerAIEvaluation([attemptId], DEFAULT_EVALUATION_MODEL),
         onSuccess: (processIds, attemptId) => {
             toast.success(t('toasts.restartSuccess'));
             queryClient.invalidateQueries({ queryKey: ['EVALUATION_PROCESSES', assessmentId] });
