@@ -75,7 +75,9 @@ _WORDS = {
 _FRACTION = re.compile(r"(?<![\d/.])(\d+)\s*/\s*(\d+)(?![\d/])")
 _RATIO3 = re.compile(r"\b(\d+(?:\s*:\s*\d+){2,})\b")
 _POW = re.compile(r"\^\s*\(?(-?\w+)\)?")
-_NUM_OP_NUM = re.compile(r"(?<=[\d)])\s*([+\-−–])\s*(?=[\d(])")
+# "2 + 3", "x² + 2x", "(k - 4)": an operator between operands — spaced, or
+# digit-adjacent — but never the hyphen inside "well-known".
+_NUM_OP_NUM = re.compile(r"(?<=[\d)])\s*([+\-−–])\s*(?=[\d(])|(?<=\S)\s+([+\-−–])\s+(?=\S)")
 
 
 def spoken_form(text_: str, lang: str = "en") -> str:
@@ -91,7 +93,7 @@ def spoken_form(text_: str, lang: str = "en") -> str:
     t = t.replace("×", w["into"]).replace("÷", w["div"]).replace("≠", w["neq"]).replace("≥", w["ge"]).replace("≤", w["le"])
     t = t.replace("²", w["sq"]).replace("³", w["cube"]).replace("√", w["root"]).replace("→", w["gives"])
     t = _POW.sub(lambda m: w["sq"] if m.group(1) == "2" else w["cube"] if m.group(1) == "3" else f"{w['pow']}{m.group(1)}", t)
-    t = _NUM_OP_NUM.sub(lambda m: w["plus"] if m.group(1) == "+" else w["minus"], t)
+    t = _NUM_OP_NUM.sub(lambda m: w["plus"] if (m.group(1) or m.group(2)) == "+" else w["minus"], t)
     t = t.replace(">=", w["ge"]).replace("<=", w["le"])
     t = re.sub(r"(?<![=<>!])\s*=\s*(?!=)", w["eq"], t)
     t = re.sub(r"(?<=\d)\s*%", w["pct"], t)
