@@ -632,6 +632,14 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("limit") int limit);
 
     /**
+     * The learner's most recent inbound message on this conversation — the clock Meta's 24-hour
+     * customer service window runs from. Same equality scoping as {@link #findMessagesForPhone}
+     * (exact channel_id, exact institute_id), so the two agree about what "this conversation" is.
+     */
+    Optional<NotificationLog> findTopByChannelIdAndInstituteIdAndNotificationTypeOrderByNotificationDateDesc(
+            String channelId, String instituteId, String notificationType);
+
+    /**
      * Batch count unread messages for multiple phones in one query.
      * Returns rows of (channel_id, unread_count).
      */

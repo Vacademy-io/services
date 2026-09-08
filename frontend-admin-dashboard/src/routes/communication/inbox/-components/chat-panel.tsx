@@ -11,6 +11,8 @@ import {
     FileText,
     HandWaving,
     WarningCircle,
+    Check,
+    Checks,
 } from '@phosphor-icons/react';
 
 interface Props {
@@ -138,6 +140,15 @@ export function ChatPanel({ onLoadOlder }: Props) {
                                 />
                             )}
 
+                            {/* A free-form attachment sent from this Inbox (not a template header) */}
+                            {msg.mediaUrl && (
+                                <MessageHeaderMedia
+                                    type={msg.mediaType}
+                                    url={msg.mediaUrl}
+                                    filename={msg.mediaFilename}
+                                />
+                            )}
+
                             {/* Message body — the actual template text the recipient received */}
                             {msg.body && (
                                 <p className="whitespace-pre-wrap break-words text-gray-800">
@@ -184,9 +195,7 @@ export function ChatPanel({ onLoadOlder }: Props) {
                             }`}>
                                 {msg.timestamp ? formatTime(msg.timestamp) : ''}
                                 {msg.direction === 'OUTGOING' && msg.deliveryStatus !== 'FAILED' && (
-                                    <span className="ml-1" title={msg.deliveryStatus}>
-                                        {deliveryTicks(msg)}
-                                    </span>
+                                    <DeliveryTicks msg={msg} />
                                 )}
                             </p>
                         </div>
@@ -203,16 +212,45 @@ export function ChatPanel({ onLoadOlder }: Props) {
 }
 
 /**
- * WhatsApp-style ticks. deliveryStatus is WhatsApp's own verdict from its status webhook; msg.status
- * is only the log row type ("WHATSAPP_MESSAGE_OUTGOING"), which never contains READ or DELIVERED —
- * so before the webhook was reconciled onto the row, every outgoing message showed a single tick.
+ * What WhatsApp itself says happened to an outgoing message, read the way WhatsApp shows it:
+ * one grey tick sent, two grey ticks delivered to the handset, two blue ticks read.
+ *
+ * deliveryStatus is WhatsApp's own verdict from its status webhook; msg.status is only the log row
+ * type ("WHATSAPP_MESSAGE_OUTGOING"), which never contains READ or DELIVERED — so before the
+ * webhook was reconciled onto the row, every outgoing message showed a single tick. Both are
+ * checked, not one or the other: the msg.status rule is pre-existing and stays exactly as it was,
+ * deliveryStatus only adds the cases it could never see.
+ *
+ * A message with no status at all keeps the single tick — nothing has been reported yet, which is
+ * not the same as "not delivered" (that case is a red bubble and never reaches here).
  */
-function deliveryTicks(msg: InboxMessage): string {
-    const seen = (value?: string) =>
-        !!value && (value.includes('READ') || value.includes('DELIVERED'));
-    // Both, not one or the other: the msg.status check is the pre-existing rule and stays exactly as
-    // it was, deliveryStatus only adds the cases it could never see.
-    return seen(msg.deliveryStatus) || seen(msg.status) ? '✓✓' : '✓';
+function deliveryState(msg: InboxMessage): 'READ' | 'DELIVERED' | 'SENT' {
+    const says = (needle: string) => (value?: string) => !!value && value.includes(needle);
+    const read = says('READ');
+    const delivered = says('DELIVERED');
+
+    if (read(msg.deliveryStatus) || read(msg.status)) return 'READ';
+    if (delivered(msg.deliveryStatus) || delivered(msg.status)) return 'DELIVERED';
+    return 'SENT';
+}
+
+function DeliveryTicks({ msg }: { msg: InboxMessage }) {
+    const state = deliveryState(msg);
+    const label = state === 'READ' ? 'Read' : state === 'DELIVERED' ? 'Delivered' : 'Sent';
+
+    return (
+        <span className="ml-1 inline-flex align-middle" title={label}>
+            {state === 'SENT' ? (
+                <Check size={13} className="text-gray-400" />
+            ) : (
+                <Checks
+                    size={13}
+                    weight="bold"
+                    className={state === 'READ' ? 'text-sky-500' : 'text-gray-400'}
+                />
+            )}
+        </span>
+    );
 }
 
 function formatTime(timestamp: string): string {
@@ -237,8 +275,20 @@ function escalationReasonText(reason?: string): string {
     }
 }
 
-/** Renders the template header attachment (image/video/document) actually sent with the message. */
-function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
+/**
+ * Renders an attachment on a message — a template's header media, or a free-form image/video/
+ * audio/document sent from the Inbox. Accepts either casing: template headers are stored upper
+ * case ("IMAGE"), free-form sends lower case ("image").
+ */
+function MessageHeaderMedia({
+    type,
+    url,
+    filename,
+}: {
+    type?: string;
+    url: string;
+    filename?: string;
+}) {
     const t = (type || 'IMAGE').toUpperCase();
 
     if (t === 'VIDEO') {
@@ -251,6 +301,10 @@ function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
         );
     }
 
+    if (t === 'AUDIO') {
+        return <audio src={url} controls className="mb-1.5 w-full" />;
+    }
+
     if (t === 'DOCUMENT') {
         return (
             <a
@@ -259,7 +313,8 @@ function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
                 rel="noopener noreferrer"
                 className="mb-1.5 flex items-center gap-1.5 rounded-md bg-black/5 px-2 py-1.5 text-caption text-blue-600 hover:underline"
             >
-                <FileText size={14} /> View document
+                <FileText size={14} />
+                <span className="truncate">{filename || 'View document'}</span>
             </a>
         );
     }
