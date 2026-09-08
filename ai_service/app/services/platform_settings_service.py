@@ -60,6 +60,8 @@ class SettingSpec:
     # Bounds for "number" settings.
     min_value: Optional[float] = None
     max_value: Optional[float] = None
+    # Longest accepted "string" value (JSON-valued settings need more room).
+    max_length: int = 200
 
 
 def _env_bool(name: str, fallback: bool) -> bool:
@@ -278,6 +280,15 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             description='A list like [{"key":"force","title":"What is a force?","emoji":"🚀","slide_id":"…","language":"en"}]. Slides must be compiled.',
             type="string",
             default=lambda: "[]",
+            max_length=6000,
+        ),
+        SettingSpec(
+            key="tutor.demo.teacher_name",
+            group="tutor",
+            label="Demo lesson: teacher name shown to visitors",
+            description="Blank = the demo institute's own teacher name.",
+            type="string",
+            default=lambda: "",
         ),
         SettingSpec(
             key="tutor.demo.minutes",
@@ -520,8 +531,8 @@ def _coerce(spec: SettingSpec, value: Any) -> Any:
 
     if spec.type in ("model", "string"):
         v = str(value).strip()
-        if len(v) > 200:
-            raise ValueError(f"{spec.key} is too long")
+        if len(v) > spec.max_length:
+            raise ValueError(f"{spec.key} is too long (max {spec.max_length} characters)")
         return v
 
     if spec.type == "number":
