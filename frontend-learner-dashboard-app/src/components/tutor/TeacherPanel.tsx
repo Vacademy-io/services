@@ -111,7 +111,7 @@ const PHASE_LABEL: Record<TutorPhase, string> = {
 export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
-  notice, disabled, compact, pace, onPace, stats, language, languages, onLanguage,
+  notice, disabled, pace, onPace, stats, language, languages, onLanguage,
   avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarNeedsTap, onActivateAvatar, locked, countdown,
 }) => {
   const [text, setText] = useState("");
