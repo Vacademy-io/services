@@ -51,7 +51,10 @@ public interface ChatbotMessageProvider {
      * @param mediaUrl  publicly accessible URL of the media file
      * @param caption   optional caption (not supported for audio)
      * @param filename  optional filename (for documents)
+     * @return the provider-assigned message id, or null (see {@link #sendTemplate}). The Inbox
+     *   stores it on notification_log.source_id so the delivered/read webhooks land on THIS row
+     *   rather than the most recent outbound to the same phone.
      */
-    void sendMedia(String phone, String mediaType, String mediaUrl, String caption,
-                   String filename, String instituteId, String businessChannelId);
+    String sendMedia(String phone, String mediaType, String mediaUrl, String caption,
+                     String filename, String instituteId, String businessChannelId);
 }
