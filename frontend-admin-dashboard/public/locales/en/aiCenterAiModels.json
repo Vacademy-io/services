@@ -1,5 +1,13 @@
 {
     "models": {
+        "gemini25FlashLite": {
+            "name": "Gemini 2.5 Flash Lite",
+            "description": "Google"
+        },
+        "gemini25Flash": {
+            "name": "Gemini 2.5 Flash",
+            "description": "Google"
+        },
         "claudeOpus45": {
             "name": "Claude Opus 4.5",
             "description": "Anthropic"

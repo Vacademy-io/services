@@ -37,7 +37,10 @@ import {
     storeEvaluationDataInStorage,
     triggerAIEvaluation,
 } from '../../-services/ai-evaluation-services';
-import { buildModelDisplayNames } from '@/routes/ai-center/-types/ai-models';
+import {
+    buildModelDisplayNames,
+    DEFAULT_EVALUATION_MODEL,
+} from '@/routes/ai-center/-types/ai-models';
 import {
     Select,
     SelectContent,
@@ -268,7 +271,7 @@ const StudentEvaluateWithAIComponent = ({
     const { assessmentId } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
-    const [selectedModel, setSelectedModel] = useState<string>('google/gemini-3.1-pro-preview');
+    const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_EVALUATION_MODEL);
     const modelDisplayNames = buildModelDisplayNames(t);
 
     // Credit cost preview for this evaluation (per graded question).
