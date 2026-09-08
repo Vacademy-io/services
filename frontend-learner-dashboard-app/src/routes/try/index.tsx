@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CircleNotch, GraduationCap, Microphone, TextT } from "@phosphor-icons/react";
+import { CircleNotch, Microphone, TextT } from "@phosphor-icons/react";
 import { getTutorDemoTopics, startTutorDemo, type TutorDemoTopic } from "@/services/tutor-api";
 import { writeTutorGuest } from "@/lib/tutorGuest";
 
@@ -72,15 +72,17 @@ function TryPage() {
   };
 
   return (
-    <main className="fixed inset-0 overflow-y-auto bg-neutral-50 px-4 py-10 text-neutral-900">
+    <main className="fixed inset-0 overflow-y-auto bg-neutral-50 px-4 py-8 text-neutral-900">
       <div className="mx-auto max-w-lg">
-        <div className="mb-6 flex items-center gap-2">
-          <span className="grid size-9 place-items-center rounded-xl bg-neutral-900 text-white"><GraduationCap className="size-5" weight="fill" /></span>
-          <div>
-            <p className="text-sm font-semibold">Tutezy <span className="font-normal text-neutral-500">by Vacademy</span></p>
-            <p className="text-xs text-neutral-500">A {minutes}-minute lesson with a live AI teacher</p>
-          </div>
-        </div>
+        <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <a href={TUTEZY} className="flex flex-col gap-1" aria-label="tutezy.ai">
+            <img src="/tutezy-logo.png" alt="tutezy.ai" className="h-9 w-auto" />
+            <span className="text-xs font-medium tracking-wide text-neutral-500">Personalized learning · AI live classes · by Vacademy</span>
+          </a>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs font-semibold text-neutral-700">
+            <span className="size-2 rounded-full bg-success-500" /> Free {minutes}-minute lesson
+          </span>
+        </header>
 
         {search.done ? (
           <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -159,6 +161,14 @@ function TryPage() {
           </section>
         )}
       </div>
+      <footer className="mx-auto mt-8 flex max-w-lg flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+        <span>A product of <a href="https://vacademy.io" className="font-semibold text-neutral-700 hover:underline">Vacademy</a></span>
+        <span className="flex gap-4">
+          <a href={`${TUTEZY}/#pricing`} className="hover:underline">Pricing</a>
+          <a href={`${TUTEZY}/#demo`} className="hover:underline">Book a demo</a>
+          <a href="https://vacademy.io/privacy-policy" className="hover:underline">Privacy</a>
+        </span>
+      </footer>
     </main>
   );
 }
