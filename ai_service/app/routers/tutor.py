@@ -26,6 +26,7 @@ from ..schemas.tutor import (
 from ..schemas.tutor import CompileKbGrounding, CompileOptions
 from ..services.tutor import plan_store
 from ..services.tutor.runtime import state as sm
+from ..services.tutor.runtime import session_service as svc
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
 from ..services.tutor.insights_export import insights_csv_text
