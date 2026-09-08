@@ -72,7 +72,7 @@ function TryPage() {
   };
 
   return (
-    <main className="min-h-svh bg-neutral-50 px-4 py-10 text-neutral-900">
+    <main className="fixed inset-0 overflow-y-auto bg-neutral-50 px-4 py-10 text-neutral-900">
       <div className="mx-auto max-w-lg">
         <div className="mb-6 flex items-center gap-2">
           <span className="grid size-9 place-items-center rounded-xl bg-neutral-900 text-white"><GraduationCap className="size-5" weight="fill" /></span>
