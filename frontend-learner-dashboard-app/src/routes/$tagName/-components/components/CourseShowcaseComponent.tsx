@@ -60,6 +60,10 @@ export interface CourseShowcaseProps {
     badgeText?: string;
     /** Ribbon colour. Free text still works; this only picks the palette. */
     badgeTone?: CourseShowcaseBadgeTone;
+    /** Per-course overrides, keyed by course id. A hand-picked strip usually
+     *  wants a different ribbon per card ("Exclusive" vs "Latest"), so these
+     *  win over the section-wide badgeText/badgeTone above. */
+    courseBadges?: Record<string, { text?: string; tone?: CourseShowcaseBadgeTone }>;
     backgroundColor?: string;
     instituteId?: string;
     tagName?: string;
@@ -112,6 +116,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     layout = "row",
     badgeText,
     badgeTone = "hot",
+    courseBadges,
     backgroundColor,
     instituteId,
     tagName,
@@ -255,7 +260,11 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                   className="h-80 animate-pulse rounded-catalogue-lg bg-catalogue-bg-muted"
                               />
                           ))
-                        : shown.map((c) => (
+                        : shown.map((c) => {
+                              const override = courseBadges?.[c.id];
+                              const ribbon = (override?.text ?? badgeText ?? "").trim();
+                              const tone = override?.tone ?? badgeTone;
+                              return (
                               <button
                                   key={c.id}
                                   type="button"
@@ -269,15 +278,15 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                       </div>
                                       {/* Ribbon sits on the END corner so it never
                                           collides with the discount badge. */}
-                                      {badgeText?.trim() && (
+                                      {ribbon && (
                                           <div className="absolute end-3 top-3">
                                               <span
                                                   className={cn(
                                                       "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm",
-                                                      BADGE_TONE[badgeTone] || BADGE_TONE.hot,
+                                                      BADGE_TONE[tone] || BADGE_TONE.hot,
                                                   )}
                                               >
-                                                  {badgeText.trim()}
+                                                  {ribbon}
                                               </span>
                                           </div>
                                       )}
@@ -303,8 +312,9 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                           </span>
                                       </div>
                                   </div>
-                              </button>
-                          ))}
+                                  </button>
+                              );
+                          })}
                 </div>
             </div>
         </section>

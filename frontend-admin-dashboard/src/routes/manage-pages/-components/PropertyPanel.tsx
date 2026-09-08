@@ -5318,12 +5318,66 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
             {source === 'picked' && (
                 <div className="space-y-2">
-                    <Label className="text-xs">Course IDs</Label>
-                    <Input value={(props.courseIds || []).join(', ')}
-                        placeholder="id-one, id-two, id-three"
-                        onChange={(e) => updateProp('courseIds',
-                            e.target.value.split(',').map((v: string) => v.trim()).filter(Boolean))} />
-                    <p className="text-caption text-gray-400">Comma separated. Shown in the order you list them.</p>
+                    <Label className="text-xs">Courses</Label>
+                    {(props.courseIds || []).map((id: string, i: number) => {
+                        const badges = props.courseBadges || {};
+                        const setId = (next: string) => {
+                            const ids = [...(props.courseIds || [])];
+                            const prevId = ids[i];
+                            ids[i] = next;
+                            const nextBadges = { ...badges };
+                            if (prevId && prevId !== next && nextBadges[prevId]) {
+                                nextBadges[next] = nextBadges[prevId];
+                                delete nextBadges[prevId];
+                            }
+                            updateComponent(pageId, component.id, {
+                                props: { ...props, courseIds: ids, courseBadges: nextBadges },
+                            });
+                        };
+                        const setBadge = (patch: Record<string, unknown>) =>
+                            updateComponent(pageId, component.id, {
+                                props: { ...props, courseBadges: { ...badges, [id]: { ...(badges[id] || {}), ...patch } } },
+                            });
+                        return (
+                            <div key={i} className="space-y-1 rounded border border-gray-100 p-2">
+                                <div className="flex gap-1">
+                                    <Input value={id} placeholder="course id"
+                                        onChange={(e) => setId(e.target.value.trim())} />
+                                    <button
+                                        onClick={() => {
+                                            const ids = (props.courseIds || []).filter((_: string, j: number) => j !== i);
+                                            const nextBadges = { ...badges };
+                                            delete nextBadges[id];
+                                            updateComponent(pageId, component.id, {
+                                                props: { ...props, courseIds: ids, courseBadges: nextBadges },
+                                            });
+                                        }}
+                                        className="rounded px-2 text-caption text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                        Remove
+                                    </button>
+                                </div>
+                                <div className="flex gap-1">
+                                    <Input value={badges[id]?.text || ''} placeholder="ribbon for this course (optional)"
+                                        onChange={(e) => setBadge({ text: e.target.value })} />
+                                    <select value={badges[id]?.tone || 'hot'}
+                                        onChange={(e) => setBadge({ tone: e.target.value })}
+                                        className="rounded border border-gray-200 px-1 text-caption text-gray-600">
+                                        <option value="hot">Red</option>
+                                        <option value="new">Green</option>
+                                        <option value="limited">Amber</option>
+                                        <option value="neutral">Dark</option>
+                                    </select>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <Button size="sm" variant="outline"
+                        onClick={() => updateProp('courseIds', [...(props.courseIds || []), ''])}>
+                        Add a course
+                    </Button>
+                    <p className="text-caption text-gray-400">
+                        Shown in this order. A per-course ribbon overrides the section ribbon below.
+                    </p>
                 </div>
             )}
 
