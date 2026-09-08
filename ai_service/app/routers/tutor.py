@@ -676,7 +676,7 @@ class DemoAvatarTokenRequest(BaseModel):
 async def demo_avatar_token(payload: DemoAvatarTokenRequest, authorization: Optional[str] = Header(default=None),
                             db: Session = Depends(db_dependency)) -> Dict[str, Any]:
     from ..core.security import decode_access_token
-    from ..models.tutor_session import TutorSession
+    from ..models.tutor_runtime import TutorSession
     from ..services import spatius_service
     from ..services.tutor import demo
     token = (authorization or "").replace("Bearer", "").strip()
