@@ -1005,6 +1005,12 @@ export const NOTIFICATION_SERVICE_BASE = `${BASE_URL}/notification-service/v1`;
 // Chatbot Flow Builder
 export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
 
+// AI credits consumed by those flows' AI_RESPONSE nodes. Lives in admin-core, not
+// notification-service: credit_transactions is in the admin-core database, and the
+// flow id travels on the transaction as batch_id so the rollup needs no join.
+export const CHATBOT_FLOW_AI_USAGE = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/usage`;
+export const CHATBOT_FLOW_AI_USAGE_LOGS = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/logs`;
+
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;
 
