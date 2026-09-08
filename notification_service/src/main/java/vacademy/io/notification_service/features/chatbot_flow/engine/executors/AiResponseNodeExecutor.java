@@ -477,13 +477,15 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             return;
         }
         try {
-            provider.sendInteractive(ctx.getPhoneNumber(), payload,
-                    ctx.getInstituteId(), ctx.getBusinessChannelId());
+            ctx.setLastProviderMessageId(
+                    provider.sendInteractive(ctx.getPhoneNumber(), payload,
+                            ctx.getInstituteId(), ctx.getBusinessChannelId()));
         } catch (Exception e) {
             log.warn("sendInteractive failed, falling back to text: {}", e.getMessage());
             try {
-                provider.sendText(ctx.getPhoneNumber(), fallbackText,
-                        ctx.getInstituteId(), ctx.getBusinessChannelId());
+                ctx.setLastProviderMessageId(
+                        provider.sendText(ctx.getPhoneNumber(), fallbackText,
+                                ctx.getInstituteId(), ctx.getBusinessChannelId()));
             } catch (Exception textEx) {
                 // Both shapes refused — the learner got nothing, so say so in the Inbox.
                 logSendFailure(ctx, "interactive", fallbackText, textEx.getMessage());
@@ -501,8 +503,10 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             return;
         }
         try {
-            provider.sendText(context.getPhoneNumber(), text,
-                    context.getInstituteId(), context.getBusinessChannelId());
+            // The id the engine stamps on the outgoing row, so this reply's ticks can advance.
+            context.setLastProviderMessageId(
+                    provider.sendText(context.getPhoneNumber(), text,
+                            context.getInstituteId(), context.getBusinessChannelId()));
         } catch (Exception e) {
             // Swallow: the AI turn itself succeeded, and the caller's own error path would send a
             // second (equally undeliverable) message. The failure is recorded for the Inbox.

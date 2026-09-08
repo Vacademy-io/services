@@ -34,6 +34,14 @@ public class WhatsAppInboxService {
     private static final String OUTGOING = "WHATSAPP_MESSAGE_OUTGOING";
 
     /**
+     * Placeholder for "no phones": SQL rejects an empty {@code IN ()}, so the clause is given a
+     * value no phone number can equal and matches nothing. Deliberately NOT the empty string —
+     * production has ~1,000 WhatsApp rows with a blank channel_id, and an empty-string sentinel
+     * would pull that blank "conversation" into the Unanswered tab.
+     */
+    private static final List<String> NO_PHONES = List.of("__no_pending_escalations__");
+
+    /**
      * Meta's customer service window: free-form text and media are allowed for 24 hours after the
      * learner's last inbound message, and only an approved template can re-open the conversation
      * once it lapses.
@@ -56,9 +64,10 @@ public class WhatsAppInboxService {
     /**
      * One page of the conversation list.
      *
-     * @param filter {@code UNANSWERED} — only conversations the chatbot handed over and nobody has
-     *               answered yet; {@code FAILED} — only conversations containing a message the
-     *               provider refused to deliver; null/blank/ALL — everything.
+     * @param filter {@code UNANSWERED} — only conversations where the learner spoke last and
+     *               nobody has replied (plus any open chatbot hand-over); {@code FAILED} — only
+     *               conversations containing a message that never reached the learner; null/blank/
+     *               ALL — everything.
      */
     public List<InboxConversationDTO> getConversations(String instituteId, int offset, int limit,
                                                        String filter) {
@@ -89,15 +98,18 @@ public class WhatsAppInboxService {
 
         return logs.stream().map(nl -> {
             ChatbotEscalation escalation = pending.get(nl.getChannelId());
+            boolean lastFromLearner = !nl.getNotificationType().contains("OUTGOING");
             return InboxConversationDTO.builder()
                     .phone(nl.getChannelId())
                     .senderName(nl.getSenderName())
                     .userId(nl.getUserId())
                     .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
-                    .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
+                    .lastMessageType(lastFromLearner ? "INCOMING" : "OUTGOING")
                     .lastMessageTime(nl.getNotificationDate())
                     .unreadCount(unreadMap.getOrDefault(nl.getChannelId(), 0L))
-                    .awaitingReply(escalation != null)
+                    // Same rule the Unanswered filter selects on, so the badge, the header count
+                    // and the tab can never disagree about which conversations are waiting.
+                    .awaitingReply(escalation != null || lastFromLearner)
                     .escalationId(escalation != null ? escalation.getId() : null)
                     .escalationReason(escalation != null ? escalation.getReason() : null)
                     .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)
@@ -114,11 +126,14 @@ public class WhatsAppInboxService {
         String normalized = filter == null ? "" : filter.trim().toUpperCase();
 
         if (FILTER_UNANSWERED.equals(normalized)) {
-            // The phone list is authoritative here — it comes from the escalation table, not from
-            // notification_log — so an empty set means "nothing is waiting", not "no data".
+            // Unanswered means what it says: the learner spoke last and nobody replied. Deriving it
+            // from notification_log rather than from the escalation table is what makes the tab work
+            // for every institute — most run no chatbot, so there are no escalations to list.
+            // Open hand-overs are still folded in, because a hand-over the bot itself answered last
+            // is work nobody has picked up.
             List<String> waiting = new ArrayList<>(escalationService.findPendingPhones(instituteId));
-            if (waiting.isEmpty()) return List.of();
-            return notificationLogRepository.findConversationsForPhones(instituteId, waiting, limit, offset);
+            return notificationLogRepository.findUnansweredConversations(
+                    instituteId, waiting.isEmpty() ? NO_PHONES : waiting, limit, offset);
         }
 
         if (FILTER_FAILED.equals(normalized)) {
@@ -248,14 +263,17 @@ public class WhatsAppInboxService {
 
         return logs.stream().map(nl -> {
             ChatbotEscalation escalation = pending.get(nl.getChannelId());
+            boolean lastFromLearner = !nl.getNotificationType().contains("OUTGOING");
             return InboxConversationDTO.builder()
                     .phone(nl.getChannelId())
                     .senderName(nl.getSenderName())
                     .userId(nl.getUserId())
                     .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
-                    .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
+                    .lastMessageType(lastFromLearner ? "INCOMING" : "OUTGOING")
                     .lastMessageTime(nl.getNotificationDate())
-                    .awaitingReply(escalation != null)
+                    // Same rule as the conversation list, so a searched row and a listed row never
+                    // describe the same conversation differently.
+                    .awaitingReply(escalation != null || lastFromLearner)
                     .escalationId(escalation != null ? escalation.getId() : null)
                     .escalationReason(escalation != null ? escalation.getReason() : null)
                     .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)

@@ -112,15 +112,17 @@ export function ConversationList({ onLoadMore }: Props) {
                                 </div>
                             </div>
 
-                            {/* State badges: the bot handed over, or a message never landed */}
-                            {(c.awaitingReply || (c.failedCount ?? 0) > 0) && (
+                            {/* State badges: the bot handed over, or a message never landed.
+                                A plain unanswered chat gets no chip — its green unread count says
+                                the same thing, and on the Unanswered tab that would be every row. */}
+                            {(!!c.escalationId || (c.failedCount ?? 0) > 0) && (
                                 <div className="mt-1 flex flex-wrap gap-1">
-                                    {c.awaitingReply && (
+                                    {!!c.escalationId && (
                                         <span
                                             title={escalationTitle(c)}
                                             className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-px text-caption font-medium text-amber-700"
                                         >
-                                            <HandWaving size={10} /> Unanswered
+                                            <HandWaving size={10} /> Bot handed over
                                         </span>
                                     )}
                                     {(c.failedCount ?? 0) > 0 && (
@@ -155,7 +157,7 @@ export function ConversationList({ onLoadMore }: Props) {
 }
 
 function emptyText(filter: InboxFilter): string {
-    if (filter === 'UNANSWERED') return 'Nobody is waiting for a reply';
+    if (filter === 'UNANSWERED') return 'Every conversation has been replied to';
     if (filter === 'FAILED') return 'Every message was delivered';
     return 'No conversations yet';
 }

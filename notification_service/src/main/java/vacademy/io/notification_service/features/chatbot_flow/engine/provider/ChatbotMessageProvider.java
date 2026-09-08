@@ -32,9 +32,10 @@ public interface ChatbotMessageProvider {
      *   interactiveType (button|list), header, body, footer, buttons, sections
      * @param instituteId for credential resolution
      * @param businessChannelId phone_number_id for this institute
+     * @return the provider-assigned message id, or null (see {@link #sendTemplate}).
      */
-    void sendInteractive(String phone, Map<String, Object> interactivePayload,
-                         String instituteId, String businessChannelId);
+    String sendInteractive(String phone, Map<String, Object> interactivePayload,
+                           String instituteId, String businessChannelId);
 
     /**
      * Send a plain text message. Session window required.

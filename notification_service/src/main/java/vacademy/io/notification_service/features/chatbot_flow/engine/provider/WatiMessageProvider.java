@@ -126,8 +126,8 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendInteractive(String phone, Map<String, Object> interactivePayload,
-                                 String instituteId, String businessChannelId) {
+    public String sendInteractive(String phone, Map<String, Object> interactivePayload,
+                                   String instituteId, String businessChannelId) {
         WatiConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("WATI config not found for institute: " + instituteId);
 
@@ -139,6 +139,8 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         } else if ("list".equals(interactiveType)) {
             sendInteractiveList(config, formattedPhone, interactivePayload);
         }
+        // WATI's interactive endpoints report no message id, same as its other sends here.
+        return null;
     }
 
     private void sendInteractiveButtons(WatiConfig config, String phone, Map<String, Object> payload) {

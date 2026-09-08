@@ -15,6 +15,7 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.common.logging.SentryLogger;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -502,6 +503,54 @@ public class WhatsAppService {
         return filtered;
     }
 
+    /**
+     * Catch the statuses that arrived before these rows did.
+     *
+     * <p>A batch sends every recipient and only then writes its notification_log rows, so for a
+     * blast of any size WhatsApp's sent/delivered/read webhooks for the early recipients are
+     * processed while their send row does not yet exist — the webhook finds nothing to stamp and
+     * never runs again, leaving delivered messages on one grey tick. The rows exist now, so ask
+     * once what the provider has already reported about them.
+     *
+     * <p>Best-effort by contract: the messages are sent and logged either way, and a tick that
+     * stays grey is not worth failing a send over.
+     */
+    private void backfillStatusesReportedBeforeTheseRowsExisted(List<NotificationLog> logs,
+                                                                String templateName,
+                                                                String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return;
+        try {
+            String[] messageIds = logs.stream()
+                    .map(NotificationLog::getSourceId)
+                    // Only a real provider id can join. A send with none (WATI bulk, a refused
+                    // send) stored the template name instead, and matching on that would drag in
+                    // every other message ever sent from the same template.
+                    .filter(id -> id != null && !id.equals(templateName))
+                    .distinct()
+                    .toArray(String[]::new);
+            if (messageIds.length == 0) return;
+
+            // How far back to look for statuses that already arrived. The batch's own oldest send
+            // plus a margin — the status cannot predate its send, and keeping the window tight is
+            // what makes this an indexed lookup instead of a scan of every status row on file.
+            Instant since = logs.stream()
+                    .map(NotificationLog::getNotificationDate)
+                    .filter(Objects::nonNull)
+                    .min(Instant::compareTo)
+                    .orElse(Instant.now())
+                    .minus(Duration.ofMinutes(15));
+
+            int stamped = notificationLogRepository.backfillDeliveryStatusFromRecordedEvents(
+                    instituteId, since, messageIds);
+            if (stamped > 0) {
+                log.info("Back-filled delivery status on {} of {} just-logged WhatsApp rows "
+                        + "(status webhook arrived before the row)", stamped, messageIds.length);
+            }
+        } catch (Exception e) {
+            log.warn("Could not back-fill delivery status for this batch: {}", e.getMessage());
+        }
+    }
+
     // ==================== Notification Logging ====================
 
     private void logWhatsAppMessages(String templateName,
@@ -595,6 +644,7 @@ public class WhatsAppService {
             if (!logs.isEmpty()) {
                 notificationLogRepository.saveAll(logs);
                 log.info("Logged {} WhatsApp messages to notification_log table", logs.size());
+                backfillStatusesReportedBeforeTheseRowsExisted(logs, templateName, instituteId);
             }
 
         } catch (Exception e) {
