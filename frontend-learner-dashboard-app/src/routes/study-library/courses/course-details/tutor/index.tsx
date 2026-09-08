@@ -117,6 +117,9 @@ function TutorPage() {
   const [stats, setStats] = useState<LessonStats>({ asked: 0, correct: 0, streak: 0, best: 0 });
   // Phones: the outline lives in a bottom sheet instead of a left rail.
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // Phones: one pane at a time — the board, or the teacher's conversation.
+  // A question or a nudge flips to the teacher so nothing is missed.
+  const [phoneView, setPhoneView] = useState<"board" | "teacher">("board");
   // Desktop: the outline folds to a thin strip so the board and the teacher get the width.
   const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
     try {
@@ -473,6 +476,7 @@ function TutorPage() {
       }
     },
     onCheck: (ev) => {
+      setPhoneView("teacher");
       settleBoard();
       setCheck(ev);
       setAwaiting("answer");
@@ -799,21 +803,37 @@ function TutorPage() {
 
   return (
     <LayoutContainer immersive enableChatbotPanel={false}>
-      {/* Phones: a compact teacher strip on top (name, status, outline, end). */}
-      <div className="mb-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 lg:hidden">
-        <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-9" />
+      {/* Phones: a slim strip (teacher, status, outline) and a Board / Teacher switch. */}
+      <div className="mb-2 flex items-center gap-2 lg:hidden">
+        <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-8" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}</p>
-          <p className="truncate text-xs text-neutral-500">
-            {title} · {progress.done}/{progress.total}
-          </p>
+          <p className="truncate text-xs font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}<span className="ms-1 font-normal text-neutral-500">· {progress.done}/{progress.total}</span></p>
+        </div>
+        {demoClock && <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{demoClock}</span>}
+        <div className="flex rounded-full bg-neutral-100 p-0.5" role="tablist" aria-label="View">
+          {(["board", "teacher"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={phoneView === v}
+              onClick={() => setPhoneView(v)}
+              className={`relative rounded-full px-3 py-1 text-xs font-semibold ${phoneView === v ? "bg-white text-primary-500 shadow-sm" : "text-neutral-600"}`}
+            >
+              {v === "board" ? "Board" : "Teacher"}
+              {v === "teacher" && phoneView === "board" && awaiting === "answer" && (
+                <span className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-danger-500" aria-label="Your turn" />
+              )}
+            </button>
+          ))}
         </div>
         <button
           type="button"
           onClick={() => setOutlineOpen(true)}
-          className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700"
+          className="rounded-full border border-neutral-200 p-1.5 text-neutral-700"
+          aria-label="Outline"
         >
-          <ListBullets className="size-4" /> Outline
+          <ListBullets className="size-4" />
         </button>
       </div>
       <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
@@ -826,11 +846,11 @@ function TutorPage() {
       </Sheet>
 
       {isDemo && (
-        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm">
+        <div className="mb-2 flex items-center gap-x-3 gap-y-1 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm sm:px-4 sm:py-2">
           <span className="font-semibold text-neutral-900">Tutezy demo</span>
-          <span className="text-neutral-600">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
-          {demoClock && <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{demoClock} left</span>}
-          <a href="https://tutezy.ai/#demo" className="ms-auto rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo for your institute</a>
+          <span className="hidden text-neutral-600 md:inline">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
+          {demoClock && <span className="hidden rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700 lg:inline">{demoClock} left</span>}
+          <a href="https://tutezy.ai/#demo" className="ms-auto shrink-0 rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo</a>
         </div>
       )}
       <div className="flex h-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3">
@@ -864,7 +884,7 @@ function TutorPage() {
             />
           )}
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-0">
+        <div className={`min-h-0 min-w-0 flex-1 flex-col lg:flex lg:min-h-0 ${phoneView === "board" ? "flex" : "hidden"}`}>
           {disconnected && isDemo && (
             <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-neutral-800">
               <span className="font-semibold">{disconnected.reason === "limit" ? "That was your free lesson." : "The lesson ended."}</span>
@@ -917,7 +937,7 @@ function TutorPage() {
             </div>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:w-80 lg:flex-none xl:w-96">
+        <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:flex lg:w-80 lg:flex-none xl:w-96 ${phoneView === "teacher" ? "flex" : "hidden"}`}>
           <TeacherPanel
             compact
             teacherName={boot?.teacher_name || "Teacher"}

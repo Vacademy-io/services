@@ -89,3 +89,11 @@
 @keyframes tb-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .tutor-board-preview .tb-svg .tb-step { opacity: 0; transform: translateY(6px); transition: opacity 0.5s ease, transform 0.5s ease; }
 .tutor-board-preview .tb-svg .tb-step.tb-step-on { opacity: 1; transform: none; }
+
+/* Phones: tighter gutters, slightly smaller type, images never wider than the board. */
+@media (max-width: 640px) {
+    .tutor-board-preview .tutor-board { @apply px-3 py-3; font-size: 15px; }
+    .tutor-board-preview .tb-heading { @apply text-lg; }
+    .tutor-board-preview img, .tutor-board-preview svg { max-width: 100%; height: auto; }
+    .tutor-board-preview table { display: block; max-width: 100%; overflow-x: auto; }
+}
