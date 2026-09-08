@@ -118,7 +118,7 @@ _TOPIC_COLS = ("key", "title", "emoji", "language", "sort_order", "source_text",
 
 def list_topics(db: Session, *, active_only: bool = False, with_source: bool = False) -> List[Dict[str, Any]]:
     """Every demo topic with the state of its compiled plan."""
-    from .. import plan_store  # noqa: WPS433
+    from . import plan_store  # noqa: WPS433
     rows = db.execute(text("SELECT " + ", ".join(_TOPIC_COLS) + " FROM tutor_demo_topic"
                            + (" WHERE is_active" if active_only else "") + " ORDER BY sort_order, title")).fetchall()
     out = []
@@ -159,7 +159,7 @@ def delete_topic(db: Session, key: str) -> bool:
 def load_demo_source(db: Session, slide_id: str):
     """A SlideSource built from the topic's authored text, so the ordinary
     compiler can produce a plan for it."""
-    from ..slide_source import SlideSource, _hash
+    from .slide_source import SlideSource, _hash
     key = slide_id[len(DEMO_SLIDE_PREFIX):]
     r = db.execute(text("SELECT title, source_text, language FROM tutor_demo_topic WHERE key = :k"), {"k": key}).first()
     if not r:

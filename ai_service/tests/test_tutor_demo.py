@@ -57,3 +57,17 @@ def test_public_topics_requires_everything(monkeypatch):
     out = demo.public_topics(object())
     assert out["enabled"] and [t["key"] for t in out["topics"]] == ["k"] and out["minutes"] == 3
     assert demo.slide_id_for("k") == "demo:k" and demo.is_demo_slide("demo:k") and not demo.is_demo_slide("abc")
+
+
+def test_demo_source_and_topic_listing_imports_resolve(monkeypatch):
+    """The compiler and the topics list import sibling modules lazily; a wrong
+    relative import only fails at runtime, so exercise both paths here."""
+    class _DB:
+        def execute(self, stmt, params=None):
+            class R:
+                def first(_): return ("Photosynthesis", "Plants make sugar from light.", "en")
+                def fetchall(_): return []
+            return R()
+    src = demo.load_demo_source(_DB(), "demo:photosynthesis")
+    assert src is not None and src.kind == "document" and src.slide_id == "demo:photosynthesis" and src.text
+    assert demo.list_topics(_DB()) == []
