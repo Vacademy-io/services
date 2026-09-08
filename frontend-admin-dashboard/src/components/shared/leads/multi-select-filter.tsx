@@ -15,6 +15,12 @@ import { cn } from '@/lib/utils';
 export interface MultiSelectOption {
     value: string;
     label: string;
+    /**
+     * Secondary line under the label — an email, a role. Also folded into the
+     * text the search box matches, so two people with the same name stay
+     * tellable apart.
+     */
+    sublabel?: string;
     /** When true, selecting this clears all other selections (acts like "All"). */
     clearAll?: boolean;
 }
@@ -80,7 +86,7 @@ export function MultiSelectFilter({
     const triggerLabel = showSelectedLabel
         ? count === 0
             ? label
-            : (soleSelectedLabel ?? `${count} selected`)
+            : soleSelectedLabel ?? `${count} selected`
         : count > 0
           ? `${label} · ${count}`
           : label;
@@ -108,7 +114,12 @@ export function MultiSelectFilter({
                     <CaretDown className="size-4 shrink-0 text-neutral-400" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-56 p-0">
+            {/* Only the two-line (sublabel) variant needs the extra width; every
+                existing call site keeps the width it had. */}
+            <PopoverContent
+                align="start"
+                className={cn('p-0', options.some((opt) => opt.sublabel) ? 'w-64' : 'w-56')}
+            >
                 <Command>
                     <CommandInput placeholder={placeholder} className="h-9" />
                     <CommandList className="max-h-64 overflow-y-auto">
@@ -126,7 +137,9 @@ export function MultiSelectFilter({
                             {options.map((opt) => (
                                 <CommandItem
                                     key={opt.value}
-                                    value={opt.label}
+                                    value={
+                                        opt.sublabel ? `${opt.label} ${opt.sublabel}` : opt.label
+                                    }
                                     onSelect={() => toggle(opt.value, opt.clearAll)}
                                     className="cursor-pointer"
                                 >
@@ -142,7 +155,14 @@ export function MultiSelectFilter({
                                                   : 'opacity-0'
                                         )}
                                     />
-                                    <span className="truncate">{opt.label}</span>
+                                    <span className="flex min-w-0 flex-col">
+                                        <span className="truncate">{opt.label}</span>
+                                        {opt.sublabel && (
+                                            <span className="truncate text-xs text-neutral-500">
+                                                {opt.sublabel}
+                                            </span>
+                                        )}
+                                    </span>
                                 </CommandItem>
                             ))}
                         </CommandGroup>
