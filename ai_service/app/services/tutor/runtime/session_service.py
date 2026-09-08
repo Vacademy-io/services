@@ -324,8 +324,12 @@ def load_lesson(db: Session, slide_id: str) -> Optional[LessonPlan]:
     if plan is None:
         return None
     view = plan_store.plan_view(db, plan)
-    row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
-    view["slide_title"] = (row[0] if row else None) or ""
+    if slide_id.startswith("demo:"):
+        from ..demo import demo_title
+        view["slide_title"] = demo_title(db, slide_id) or ""
+    else:
+        row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
+        view["slide_title"] = (row[0] if row else None) or ""
     return from_plan_view(view)
 
 
@@ -560,11 +564,11 @@ def start_session(
     return everything the socket needs to open: settings, lesson, pointer."""
     with db_session() as db:
         pkg = package_of_session(db, package_session_id)
-        if not pkg:
+        if not pkg and not guest:
             raise ValueError("Batch not found")
-        package_id, package_name = pkg
+        package_id, package_name = pkg if pkg else ("", "Tutezy demo")
         settings = resolve_settings(db, package_id=package_id, institute_id=institute_id)
-        if not settings.enabled:
+        if not settings.enabled and not guest:
             raise PermissionError("Tutor mode is not enabled for this course")
         st = get_or_create_state(db, user_id=user_id, package_session_id=package_session_id, institute_id=institute_id)
         target_slide = slide_id or st.current_slide_id
@@ -572,7 +576,7 @@ def start_session(
             raise ValueError("No slide to teach: pass slide_id")
         # The session teaches only what this batch exposes: a slide id from
         # another course (or an unpublished one) is not a plan lookup.
-        if not slide_in_package_session(db, target_slide, package_session_id):
+        if not (guest and target_slide.startswith("demo:")) and not slide_in_package_session(db, target_slide, package_session_id):
             if slide_id:
                 raise LookupError("This slide is not part of this batch")
             raise ValueError("No slide to teach: pass slide_id")

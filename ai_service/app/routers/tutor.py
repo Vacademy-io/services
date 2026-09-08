@@ -618,11 +618,13 @@ def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depend
     from ..services import spatius_service
     from ..services.tutor import demo
     c = demo.config(db)
-    if not (c["enabled"] and c["institute_id"] and c["package_session_id"] and c["topics"]):
+    pub = demo.public_topics(db)
+    if not pub["enabled"]:
         raise HTTPException(status_code=503, detail="The free lesson is not available right now. Book a demo instead.")
-    topic = demo.topic_by_key(c["topics"], payload.topic_key)
+    topic = demo.topic_by_key(pub["topics"], payload.topic_key)
     if not topic:
         raise HTTPException(status_code=404, detail="Unknown topic")
+    topic = {**topic, "slide_id": demo.slide_id_for(topic["key"])}
     ip = demo.client_ip(request)
     iph = demo.ip_hash(ip)
     reason = demo.grant_allowed(db, iph=iph, per_ip_per_day=c["per_ip_per_day"], daily_cap=c["daily_cap"])
@@ -631,7 +633,7 @@ def demo_start(payload: DemoStartRequest, request: Request, db: Session = Depend
     name = demo.sanitize_name(payload.name)
     user_id = demo.guest_user_id()
     try:
-        boot = svc.start_session(user_id=user_id, institute_id=c["institute_id"], package_session_id=c["package_session_id"],
+        boot = svc.start_session(user_id=user_id, institute_id=c["institute_id"], package_session_id=c["package_session_id"] or "demo",
                                  slide_id=str(topic["slide_id"]), mode=payload.mode,
                                  language=payload.language or topic.get("language") or "en",
                                  guest={"name": name, "minutes": c["minutes"]})

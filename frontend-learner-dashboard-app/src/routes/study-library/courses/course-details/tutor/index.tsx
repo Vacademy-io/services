@@ -364,6 +364,7 @@ function TutorPage() {
   const socket = useTutorSocket({
     getToken: () => guestRef.current?.token,
     onReady: (ev) => {
+      if (guestRef.current) setDemoLeft((v) => (v === null ? (guestRef.current?.minutes ?? 3) * 60 : v));
       setDisconnected(null);
       setPhase("idle");
       if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
@@ -638,6 +639,14 @@ function TutorPage() {
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
   const isDemo = search.demo === "1";
   const guestRef = useRef(isDemo ? readTutorGuest() : null);
+  // Public demo: a visible clock, counted from the moment the lesson opens.
+  const [demoLeft, setDemoLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (demoLeft === null || demoLeft <= 0) return;
+    const t = setInterval(() => setDemoLeft((v) => (v === null ? v : Math.max(0, v - 1))), 1000);
+    return () => clearInterval(t);
+  }, [demoLeft !== null && demoLeft > 0]);
+  const demoClock = demoLeft === null ? undefined : `${Math.floor(demoLeft / 60)}:${String(demoLeft % 60).padStart(2, "0")}`;
 
   const bootSession = useCallback(async () => {
     const seq = ++bootSeq.current;
@@ -816,6 +825,14 @@ function TutorPage() {
         </SheetContent>
       </Sheet>
 
+      {isDemo && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm">
+          <span className="font-semibold text-neutral-900">Tutezy demo</span>
+          <span className="text-neutral-600">A 3-minute taste. Your students would get the whole chapter, in your teacher&apos;s voice.</span>
+          {demoClock && <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{demoClock} left</span>}
+          <a href="https://tutezy.ai/#demo" className="ms-auto rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-white">Book a demo for your institute</a>
+        </div>
+      )}
       <div className="flex h-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3">
         <div className={`hidden min-h-0 shrink-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white transition-[width] lg:block ${outlineCollapsed ? "w-12 p-1" : "w-60 p-3"}`}>
           {outlineCollapsed ? (
@@ -908,6 +925,8 @@ function TutorPage() {
             phase={phase}
             transcript={transcript}
             check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type, revisit: !!check.revisit, predict: !!check.predict } : null}
+            locked={isDemo}
+            countdown={demoClock}
             pace={pace}
             onPace={(p) => {
               setPace(p);

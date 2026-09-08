@@ -9,6 +9,7 @@ few minutes and do not bill it. Abuse controls: one session per IP per day
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 import hashlib
 import ipaddress
 import json
@@ -45,6 +46,32 @@ _ENSURE = [
     "CREATE INDEX IF NOT EXISTS idx_tutor_demo_grant_ip ON tutor_demo_grant(ip_hash, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_tutor_demo_grant_day ON tutor_demo_grant(created_at)",
 ]
+
+
+_ENSURE += [
+    """
+    CREATE TABLE IF NOT EXISTS tutor_demo_topic (
+        key          VARCHAR(64) PRIMARY KEY,
+        title        VARCHAR(160) NOT NULL,
+        emoji        VARCHAR(16),
+        language     VARCHAR(8) NOT NULL DEFAULT 'en',
+        sort_order   INTEGER NOT NULL DEFAULT 100,
+        source_text  TEXT NOT NULL,
+        is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+]
+
+DEMO_SLIDE_PREFIX = "demo:"
+
+
+def is_demo_slide(slide_id: Optional[str]) -> bool:
+    return bool(slide_id) and str(slide_id).startswith(DEMO_SLIDE_PREFIX)
+
+
+def slide_id_for(key: str) -> str:
+    return f"{DEMO_SLIDE_PREFIX}{key}"
 
 
 def ensure_tutor_demo_schema(db: Session) -> None:
@@ -84,12 +111,80 @@ def config(db: Optional[Session] = None) -> Dict[str, Any]:
     }
 
 
+# ── demo topics (own table; compiled into teaching_plan under slide id "demo:<key>") ──
+
+_TOPIC_COLS = ("key", "title", "emoji", "language", "sort_order", "source_text", "is_active", "updated_at")
+
+
+def list_topics(db: Session, *, active_only: bool = False, with_source: bool = False) -> List[Dict[str, Any]]:
+    """Every demo topic with the state of its compiled plan."""
+    from .. import plan_store  # noqa: WPS433
+    rows = db.execute(text("SELECT " + ", ".join(_TOPIC_COLS) + " FROM tutor_demo_topic"
+                           + (" WHERE is_active" if active_only else "") + " ORDER BY sort_order, title")).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(_TOPIC_COLS, r))
+        if isinstance(d.get("updated_at"), datetime):
+            d["updated_at"] = d["updated_at"].isoformat()
+        plan = plan_store.latest_plan(db, slide_id_for(d["key"]))
+        d["plan_status"] = plan.status if plan else None
+        d["plan_error"] = getattr(plan, "error", None) if plan else None
+        d["ready"] = bool(plan and plan.status == "READY")
+        d["source_chars"] = len(d.get("source_text") or "")
+        if not with_source:
+            d.pop("source_text", None)
+        out.append(d)
+    return out
+
+
+def upsert_topic(db: Session, *, key: str, title: str, source_text: str, emoji: Optional[str] = None,
+                 language: str = "en", sort_order: int = 100, is_active: bool = True) -> None:
+    db.execute(text("""
+        INSERT INTO tutor_demo_topic (key, title, emoji, language, sort_order, source_text, is_active, updated_at)
+        VALUES (:k, :t, :e, :l, :o, :s, :a, now())
+        ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title, emoji = EXCLUDED.emoji, language = EXCLUDED.language,
+            sort_order = EXCLUDED.sort_order, source_text = EXCLUDED.source_text, is_active = EXCLUDED.is_active,
+            updated_at = now()
+    """), {"k": key[:64], "t": title[:160], "e": emoji, "l": language if language in ("en", "hi") else "en",
+           "o": int(sort_order), "s": source_text, "a": bool(is_active)})
+    db.commit()
+
+
+def delete_topic(db: Session, key: str) -> bool:
+    n = db.execute(text("DELETE FROM tutor_demo_topic WHERE key = :k"), {"k": key}).rowcount
+    db.commit()
+    return bool(n)
+
+
+def load_demo_source(db: Session, slide_id: str):
+    """A SlideSource built from the topic's authored text, so the ordinary
+    compiler can produce a plan for it."""
+    from ..slide_source import SlideSource, _hash
+    key = slide_id[len(DEMO_SLIDE_PREFIX):]
+    r = db.execute(text("SELECT title, source_text, language FROM tutor_demo_topic WHERE key = :k"), {"k": key}).first()
+    if not r:
+        return None
+    return SlideSource(slide_id=slide_id, title=r[0], source_type="DEMO", source_id=key, kind="document",
+                       text=r[1] or "", course_name="Tutezy demo", chapter_name="Try a lesson",
+                       content_hash=_hash("demo", r[0], r[1] or "", r[2]))
+
+
+def demo_title(db: Session, slide_id: str) -> Optional[str]:
+    r = db.execute(text("SELECT title FROM tutor_demo_topic WHERE key = :k"), {"k": slide_id[len(DEMO_SLIDE_PREFIX):]}).first()
+    return r[0] if r else None
+
+
 def public_topics(db: Optional[Session] = None) -> Dict[str, Any]:
     c = config(db)
-    ready = bool(c["enabled"] and c["institute_id"] and c["package_session_id"] and c["topics"])
-    return {"enabled": ready, "minutes": c["minutes"],
-            "topics": [{"key": t["key"], "title": t.get("title") or t["key"], "emoji": t.get("emoji") or "",
-                        "language": t.get("language") or "en"} for t in c["topics"]]}
+    topics: List[Dict[str, Any]] = []
+    if db is not None:
+        try:
+            topics = [{"key": t["key"], "title": t["title"], "emoji": t.get("emoji") or "", "language": t.get("language") or "en"}
+                      for t in list_topics(db, active_only=True) if t["ready"]]
+        except Exception:  # noqa: BLE001
+            logger.warning("demo topics unreadable", exc_info=True)
+    ready = bool(c["enabled"] and c["institute_id"] and topics)
+    return {"enabled": ready, "minutes": c["minutes"], "topics": topics}
 
 
 # ── abuse controls ───────────────────────────────────────────────────────────

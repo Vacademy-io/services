@@ -26,7 +26,7 @@ from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ..platform_settings_service import get_platform_setting
 from . import compile_prompts as prompts
-from . import plan_store
+from . import demo, plan_store
 from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, soft_errors, validate_plan
 from .svg_check import auto_layout_svg, structural_svg_errors
 from .quiz_compiler import compile_quiz
@@ -222,11 +222,17 @@ class PlanCompiler:
     async def compile_slide(self, slide_id: str) -> Dict[str, Any]:
         # 1. Load + gate
         with db_session() as db:
-            if not slide_belongs_to_institute(db, slide_id, self.institute_id):
-                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found in this institute"}
-            source = load_slide_source(db, slide_id)
-            if source is None:
-                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found or not published"}
+            if demo.is_demo_slide(slide_id):
+                # Public demo topics: authored text in tutor_demo_topic, no course behind it.
+                source = demo.load_demo_source(db, slide_id)
+                if source is None:
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Demo topic not found"}
+            else:
+                if not slide_belongs_to_institute(db, slide_id, self.institute_id):
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found in this institute"}
+                source = load_slide_source(db, slide_id)
+                if source is None:
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found or not published"}
             db.commit()
 
         # Video / PDF: the material's own words (script, captions, cached

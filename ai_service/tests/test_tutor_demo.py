@@ -48,12 +48,12 @@ def test_ip_bucketing():
 
 
 def test_public_topics_requires_everything(monkeypatch):
-    monkeypatch.setattr(demo, "config", lambda db=None: {"enabled": True, "institute_id": "", "package_session_id": "p",
-                                                         "topics": [{"key": "k", "slide_id": "s", "title": "T"}], "minutes": 3,
-                                                         "per_ip_per_day": 1, "daily_cap": 200, "teacher_name": ""})
-    assert demo.public_topics()["enabled"] is False
-    monkeypatch.setattr(demo, "config", lambda db=None: {"enabled": True, "institute_id": "i", "package_session_id": "p",
-                                                         "topics": [{"key": "k", "slide_id": "s", "title": "T"}], "minutes": 3,
-                                                         "per_ip_per_day": 1, "daily_cap": 200, "teacher_name": ""})
-    out = demo.public_topics()
-    assert out["enabled"] and out["topics"][0]["key"] == "k" and out["minutes"] == 3
+    base = {"enabled": True, "package_session_id": "", "topics": [], "minutes": 3, "per_ip_per_day": 1, "daily_cap": 200, "teacher_name": ""}
+    monkeypatch.setattr(demo, "list_topics", lambda db, **k: [{"key": "k", "title": "T", "emoji": "", "language": "en", "ready": True},
+                                                              {"key": "raw", "title": "R", "ready": False}])
+    monkeypatch.setattr(demo, "config", lambda db=None: {**base, "institute_id": ""})
+    assert demo.public_topics(object())["enabled"] is False
+    monkeypatch.setattr(demo, "config", lambda db=None: {**base, "institute_id": "i"})
+    out = demo.public_topics(object())
+    assert out["enabled"] and [t["key"] for t in out["topics"]] == ["k"] and out["minutes"] == 3
+    assert demo.slide_id_for("k") == "demo:k" and demo.is_demo_slide("demo:k") and not demo.is_demo_slide("abc")

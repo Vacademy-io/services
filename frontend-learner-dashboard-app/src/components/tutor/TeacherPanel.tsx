@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal, ArrowsOut, ArrowsIn } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal, ArrowsOut, ArrowsIn, Lock } from "@phosphor-icons/react";
 import { TeacherAvatar } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
@@ -67,6 +67,9 @@ interface TeacherPanelProps {
   /** The face is up but its audio is locked until the learner taps it. */
   avatarNeedsTap?: boolean;
   onActivateAvatar?: () => void;
+  /** Public demo: dials are shown but locked, and the header carries the time left. */
+  locked?: boolean;
+  countdown?: string;
   /** The lesson language and the ones the course allows switching to. */
   language?: "en" | "hi";
   languages?: Array<"en" | "hi">;
@@ -109,7 +112,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, compact, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarNeedsTap, onActivateAvatar,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarNeedsTap, onActivateAvatar, locked, countdown,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -188,15 +191,18 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
   const Segmented = <T extends string>({ label, items, value, onPick }: { label: string; items: Array<{ id: T; label: string }>; value?: T; onPick: (v: T) => void }) => (
     <div className="flex min-w-0 items-center justify-between gap-2" role="group" aria-label={label}>
-      <span className="shrink-0 text-xs uppercase tracking-wide text-neutral-500">{label}</span>
-      <div className="flex shrink-0 flex-nowrap gap-0.5 rounded-full bg-neutral-100 p-0.5">
+      <span className="inline-flex shrink-0 items-center gap-1 text-xs uppercase tracking-wide text-neutral-500">
+        {locked && <Lock className="size-3" weight="fill" />} {label}
+      </span>
+      <div className={`flex shrink-0 flex-nowrap gap-0.5 rounded-full bg-neutral-100 p-0.5 ${locked ? "opacity-60" : ""}`} title={locked ? "Students can change this in the full product" : undefined}>
         {items.map((it) => (
           <button
             key={it.id}
             type="button"
+            disabled={locked}
             onClick={() => onPick(it.id)}
             aria-pressed={value === it.id}
-            className={`rounded-full px-2.5 py-0.5 text-xs transition-colors ${value === it.id ? "bg-white font-semibold text-primary-500 shadow-sm" : "text-neutral-600 hover:text-neutral-900"}`}
+            className={`rounded-full px-2.5 py-0.5 text-xs transition-colors disabled:cursor-not-allowed ${value === it.id ? "bg-white font-semibold text-primary-500 shadow-sm" : "text-neutral-600 hover:text-neutral-900"}`}
           >
             {it.label}
           </button>
@@ -231,6 +237,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                     {phase === "speaking" && <span className="inline-block size-1.5 animate-pulse rounded-full bg-success-500" />}
                     {avatarState === "loading" ? "Loading your teacher…" : PHASE_LABEL[phase]}
                     {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked}{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
+                    {countdown && <span className="ms-1 rounded-full bg-warning-500 px-1.5 py-px font-semibold tabular-nums text-white">{countdown}</span>}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -264,6 +271,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
             <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>
           </div>
           {scoreChip}
+          {countdown && <span className="shrink-0 rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{countdown}</span>}
           {optionsButton(false)}
           {avatarUsable && avatarState === "off" && (
             <button type="button" onClick={onToggleAvatar} className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100" title="Show the teacher">
@@ -296,6 +304,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               <Segmented label="Language" items={(languages ?? []).map((l) => ({ id: l, label: LANGUAGE_LABEL[l] }))} value={language} onPick={onLanguage} />
             )}
             {voiceMode && onPace && <Segmented label="Pace" items={PACES} value={pace} onPick={onPace} />}
+            {locked && <p className="text-xs text-neutral-500">Language and pace are chosen by the student in the full product.</p>}
             {canFullscreen && (
               <button type="button" onClick={toggleFullscreen} className="flex w-full items-center justify-between rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-200">
                 <span className="uppercase tracking-wide text-neutral-500">Screen</span>
