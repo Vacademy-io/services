@@ -61,10 +61,10 @@ export function AchievementsDialog({
         <ScrollArea className="max-h-96">
           <div className="space-y-4 p-4">
             {/* Level + points */}
-            <div className="rounded-xl border border-primary-100 bg-primary-50 p-4">
+            <div className="rounded-xl border border-primary-100 bg-primary-50 p-4 [.ui-play_&]:rounded-play-card [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-gold-soft [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-transparent [.ui-cleaner-play_&]:bg-cp-gold-tint">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100">
-                  <Star weight="fill" size={22} className="text-primary-500" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 [.ui-play_&]:bg-play-gold [.ui-cleaner-play_&]:bg-cp-gold">
+                  <Star weight="fill" size={22} className="text-primary-500 [.ui-play_&]:text-white [.ui-cleaner-play_&]:text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-1">
@@ -88,9 +88,9 @@ export function AchievementsDialog({
                   </div>
                 )}
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-primary-100">
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-primary-100 [.ui-play_&]:h-2.5 [.ui-play_&]:bg-play-surface">
                 <div
-                  className="h-full rounded-full bg-primary-500 transition-all duration-700"
+                  className="h-full rounded-full bg-primary-500 transition-all duration-700 [.ui-play_&]:bg-play-success"
                   style={{ width: `${progress}%` }} // design-lint-ignore: dynamic XP progress within the current level
                 />
               </div>
@@ -157,13 +157,20 @@ function BadgeRow({ badge }: { badge: PlayBadge }) {
     <div
       className={cn(
         "flex items-center gap-3 rounded-xl border p-3",
-        unlocked ? "border-primary-100 bg-primary-50" : "border-border bg-card"
+        "[.ui-play_&]:rounded-play-card-sm",
+        unlocked
+          ? "border-primary-100 bg-primary-50 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-gold-soft [.ui-cleaner-play_&]:border-transparent [.ui-cleaner-play_&]:bg-cp-gold-tint"
+          : "border-border bg-card"
       )}
     >
       <div
         className={cn(
           "relative flex h-14 w-14 shrink-0 items-center justify-center rounded-xl",
-          !isLib && (unlocked ? "bg-primary-100" : "bg-muted")
+          "[.ui-play_&]:rounded-play-card-sm",
+          !isLib &&
+            (unlocked
+              ? "bg-primary-100 [.ui-play_&]:bg-play-gold [.ui-cleaner-play_&]:bg-cp-gold"
+              : "bg-muted")
         )}
       >
         <BadgeVisual
@@ -172,7 +179,9 @@ function BadgeRow({ badge }: { badge: PlayBadge }) {
           weight={unlocked ? "fill" : "regular"}
           size={44}
           className={cn(
-            unlocked ? "text-primary-500" : "text-muted-foreground opacity-40 grayscale"
+            unlocked
+              ? "text-primary-500 [.ui-play_&]:text-white [.ui-cleaner-play_&]:text-white"
+              : "text-muted-foreground opacity-40 grayscale"
           )}
         />
         {!unlocked && (
