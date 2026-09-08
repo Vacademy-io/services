@@ -72,8 +72,8 @@ function TryPage() {
   };
 
   return (
-    <main className="fixed inset-0 overflow-y-auto bg-neutral-50 px-4 py-8 text-neutral-900">
-      <div className="mx-auto max-w-lg">
+    <main className="fixed inset-0 overflow-y-auto overflow-x-hidden bg-neutral-50 px-4 py-8 text-neutral-900">
+      <div className="mx-auto w-full max-w-lg">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <a href={TUTEZY} className="flex flex-col gap-1" aria-label="tutezy.ai">
             <img src="/tutezy-logo.png" alt="tutezy.ai" className="h-9 w-auto" />
@@ -101,7 +101,7 @@ function TryPage() {
           </section>
         ) : (
           <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <h1 className="text-2xl font-bold">Take a {minutes}-minute lesson. No sign-up.</h1>
+            <h1 className="text-xl font-bold sm:text-2xl">Take a {minutes}-minute lesson. No sign-up.</h1>
             <p className="mt-1 text-sm text-neutral-600">The teacher writes on a whiteboard, speaks, asks you a question and listens to your answer.</p>
 
             <label className="mt-5 block">
@@ -130,7 +130,7 @@ function TryPage() {
                     className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-start text-sm ${topic === t.key ? "border-primary-500 bg-primary-50 font-semibold" : "border-neutral-200 hover:bg-neutral-50"}`}
                   >
                     {t.emoji && <span className="text-lg" aria-hidden="true">{t.emoji}</span>}
-                    <span>{t.title}{t.language === "hi" ? <span className="ms-1 text-xs text-neutral-500">हिंदी</span> : null}</span>
+                    <span className="min-w-0 flex-1 break-words">{t.title}{t.language === "hi" ? <span className="ms-1 text-xs text-neutral-500">हिंदी</span> : null}</span>
                   </button>
                 ))}
               </div>
@@ -161,7 +161,7 @@ function TryPage() {
           </section>
         )}
       </div>
-      <footer className="mx-auto mt-8 flex max-w-lg flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+      <footer className="mx-auto mt-8 flex w-full max-w-lg flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
         <span>A product of <a href="https://vacademy.io" className="font-semibold text-neutral-700 hover:underline">Vacademy</a></span>
         <span className="flex gap-4">
           <a href={`${TUTEZY}/#pricing`} className="hover:underline">Pricing</a>
