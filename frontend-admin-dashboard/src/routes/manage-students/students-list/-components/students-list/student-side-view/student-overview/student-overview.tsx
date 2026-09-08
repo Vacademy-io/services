@@ -27,6 +27,7 @@ import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
 import { EditStudentDetails } from './EditStudentDetails';
 import { EditLeadDetails } from './EditLeadDetails';
+import { StudentAttribution } from '../student-attribution/student-attribution';
 
 /**
  * Overview tab — intentionally simple: a clean stack of label/value section
@@ -332,6 +333,13 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                     </dl>
                 </ProfileSectionCard>
             )}
+
+            {/* Campaign source — renders only when this learner actually arrived
+                on a tagged link; silent otherwise. */}
+            <StudentAttribution
+                userId={selectedStudent?.user_id}
+                instituteId={instituteDetails?.id}
+            />
 
             {/* Terms & Conditions — always shown so admins can see signing status
                 at a glance (Signed / Not Signed), with the signed date + PDF when

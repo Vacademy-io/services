@@ -32,6 +32,7 @@ import {
   getTokenFromCookie,
   getTokenDecodedData,
 } from "@/lib/auth/sessionUtility";
+import { captureUtmOnce } from "@/lib/utm-attribution";
 import { TokenKey } from "@/constants/auth/tokens";
 import { getCachedInstituteBranding } from "@/services/domain-routing";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
@@ -40,6 +41,17 @@ import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDet
 // Must run before React renders so failures during the first lazy import
 // are intercepted at the window level instead of bubbling to an error boundary.
 installChunkErrorHandler();
+
+// First-touch campaign capture, at boot rather than in a React effect.
+//
+// Every capture route validates its search params with a plain `z.object`,
+// which STRIPS unknown keys — so `?instituteId=…&audienceId=…&utm_source=meta`
+// is normalised by the router down to the two keys it declares, and the
+// campaign is gone from the URL before any component effect could read it.
+// Reading window.location.search here, synchronously at module evaluation,
+// happens before the router is even created, so the value is banked whatever
+// the route then does with the URL.
+captureUtmOnce();
 
 /**
  * Read the current access token synchronously from the fastest available

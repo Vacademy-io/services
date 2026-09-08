@@ -34,6 +34,7 @@ import {
   handleSubmitAudienceLead,
   extractRespondentIdentity,
 } from "../-services/audience-campaign-services";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
 import {
   parsePostSubmitConfiguration,
   applyPostSubmitTokens,
@@ -349,6 +350,18 @@ const AudienceResponseForm = ({
       );
 
       await submitAudienceLead(payload);
+
+      // Attribute the lead to the campaign that produced it. Fired after the
+      // submit succeeded and before the reset, while the identity is still in
+      // scope; it never throws, so it cannot turn a successful submission into
+      // an error toast.
+      trackUtmAttribution({
+        instituteId,
+        email: payload.user_dto?.email,
+        mobileNumber: payload.user_dto?.mobile_number,
+        sourceType: "AUDIENCE",
+        sourceId: audienceId,
+      });
 
       // Capture identity BEFORE the reset — the thank-you screen and the
       // redirect URL both interpolate it.
