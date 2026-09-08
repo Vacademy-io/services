@@ -1,0 +1,130 @@
+import { describe, expect, it } from 'vitest';
+import { fallbackDescription, splitDescriptionParts } from './ActivityLogTable';
+
+/**
+ * The audit table bolds the *names* inside each sentence by matching the
+ * description against an ordered list of patterns whose capture groups
+ * alternate connective / name. Two things go wrong silently there:
+ *
+ *  - a looser pattern placed before a specific one swallows the specific case,
+ *    so "assigned 5 lead(s) to Riya" bolds the wrong half;
+ *  - a pattern with an even number of groups shifts the alternation and bolds
+ *    the connective text instead of the name.
+ *
+ * Neither is a type error and neither makes a render fail — the row just reads
+ * wrong. So the split is asserted directly.
+ */
+describe('splitDescriptionParts', () => {
+    const nameParts = (description: string): string[] => {
+        const parts = splitDescriptionParts(description);
+        expect(parts, `no pattern matched: "${description}"`).not.toBeNull();
+        // Odd indexes are the emphasised fragments.
+        return (parts as string[]).filter((_, index) => index % 2 === 1);
+    };
+
+    it('bolds the audience name on campaign actions', () => {
+        expect(nameParts('created audience Winter Admissions 2026')).toEqual([
+            'Winter Admissions 2026',
+        ]);
+        expect(nameParts('deleted audience Winter Admissions 2026')).toEqual([
+            'Winter Admissions 2026',
+        ]);
+        expect(nameParts('sent a message to audience Winter Admissions 2026')).toEqual([
+            'Winter Admissions 2026',
+        ]);
+    });
+
+    it('bolds both the lead and the counsellor on an assignment', () => {
+        expect(nameParts('assigned lead Amit Kumar to Riya Sharma')).toEqual([
+            'Amit Kumar',
+            'Riya Sharma',
+        ]);
+        expect(nameParts('unassigned counsellor from lead Amit Kumar')).toEqual(['Amit Kumar']);
+    });
+
+    it('bolds the count on bulk lead actions, with and without a target', () => {
+        expect(nameParts('assigned 12 lead(s) to Riya Sharma')).toEqual([
+            '12 lead(s)',
+            'Riya Sharma',
+        ]);
+        expect(nameParts('reassigned 12 lead(s) from Riya Sharma')).toEqual([
+            '12 lead(s)',
+            'Riya Sharma',
+        ]);
+        expect(nameParts('assigned 12 lead(s)')).toEqual(['12 lead(s)']);
+        expect(nameParts('imported 340 lead(s) into Winter Admissions 2026')).toEqual([
+            '340 lead(s)',
+            'Winter Admissions 2026',
+        ]);
+    });
+
+    it('bolds the lead and the new value on status, tier and score changes', () => {
+        expect(nameParts('changed lead status of Amit Kumar to Interested')).toEqual([
+            'Amit Kumar',
+            'Interested',
+        ]);
+        expect(nameParts('changed lead tier of Amit Kumar to HOT')).toEqual(['Amit Kumar', 'HOT']);
+        expect(nameParts('changed lead score of Amit Kumar to 75')).toEqual(['Amit Kumar', '75']);
+    });
+
+    it('handles the remaining CRM sentences the backend emits', () => {
+        expect(nameParts('added lead Sneha Rao')).toEqual(['Sneha Rao']);
+        expect(nameParts('registered walk-in lead Sneha Rao')).toEqual(['Sneha Rao']);
+        expect(nameParts('marked lead Sneha Rao as converted')).toEqual(['Sneha Rao']);
+        expect(nameParts('scheduled a follow-up for lead Sneha Rao')).toEqual(['Sneha Rao']);
+        expect(nameParts('closed a follow-up for lead Sneha Rao')).toEqual(['Sneha Rao']);
+        expect(nameParts('created lead status Interested')).toEqual(['Interested']);
+        expect(nameParts('tagged 48 contact(s) with Hot Leads')).toEqual([
+            '48 contact(s)',
+            'Hot Leads',
+        ]);
+        expect(nameParts('removed tags from 48 contact(s)')).toEqual(['48 contact(s)']);
+        expect(nameParts('created tag Hot Leads')).toEqual(['Hot Leads']);
+        expect(nameParts('created automation Fee reminder')).toEqual(['Fee reminder']);
+        expect(nameParts('created engagement engine Winback')).toEqual(['Winback']);
+        expect(
+            nameParts('connected Meta lead form Admissions Enquiry to audience Winter Admissions')
+        ).toEqual(['Admissions Enquiry', 'Winter Admissions']);
+        expect(nameParts('changed the status of 6 enquiry(s) to CLOSED')).toEqual([
+            '6 enquiry(s)',
+            'CLOSED',
+        ]);
+    });
+
+    it('still bolds the learning-side sentences that shipped first', () => {
+        expect(nameParts('created course Mathematics 101')).toEqual(['Mathematics 101']);
+        expect(nameParts('scheduled live session Demo')).toEqual(['Demo']);
+        expect(nameParts('enrolled learner Amit Kumar in Physics 201')).toEqual([
+            'Amit Kumar',
+            'Physics 201',
+        ]);
+        expect(nameParts('terminated Amit Kumar from Physics 201')).toEqual([
+            'Amit Kumar',
+            'Physics 201',
+        ]);
+        expect(nameParts('moved Amit Kumar from Batch A to Batch B')).toEqual([
+            'Amit Kumar',
+            'Batch A',
+            'Batch B',
+        ]);
+    });
+
+    it('leaves a sentence it does not recognise entirely unstyled', () => {
+        expect(splitDescriptionParts('updated TAT and follow-up SLA settings')).toBeNull();
+        expect(splitDescriptionParts('disconnected a lead connector')).toBeNull();
+        expect(splitDescriptionParts('deleted a counsellor pool')).toBeNull();
+    });
+
+    it('every emphasised fragment sits at an odd index', () => {
+        const parts = splitDescriptionParts('assigned lead Amit Kumar to Riya Sharma');
+        expect(parts).toEqual(['assigned lead ', 'Amit Kumar', ' to ', 'Riya Sharma']);
+    });
+});
+
+describe('fallbackDescription', () => {
+    it('reads as a sentence when the backend stored no description', () => {
+        expect(fallbackDescription({ action: 'CREATE', entity_type: 'LEAD_FOLLOWUP' })).toBe(
+            'created a lead followup'
+        );
+    });
+});
