@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
     PaperPlaneRight,
     FileText,
@@ -15,91 +15,13 @@ import {
     getSessionWindow,
     getInboxMediaSupport,
     type SessionWindow,
-    type WhatsAppMediaKind,
+    type SendReplyOptions,
 } from '../-services/inbox-api';
 import { useInboxStore } from '../-stores/inbox-store';
+import { useAttachment, formatSize, formatDuration } from '../-hooks/use-attachment';
 import { getInstituteId } from '@/constants/helper';
-import { getChatUser } from '@/services/chat/getChatUser';
-import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import { sendNotification } from '@/services/unified-send-service';
 import { listTemplates, type WhatsAppTemplateDTO } from '@/routes/communication/whatsapp-templates/-services/template-api';
-
-/**
- * Meta's ceilings for a free-form media message. Checked here so an oversized file is refused
- * before it is uploaded, rather than after a round trip that ends in an opaque provider error.
- */
-const MEDIA_LIMITS: Record<WhatsAppMediaKind, number> = {
-    image: 5 * 1024 * 1024,
-    video: 16 * 1024 * 1024,
-    audio: 16 * 1024 * 1024,
-    document: 100 * 1024 * 1024,
-};
-
-/** The formats WhatsApp renders natively. Anything else has to travel as a document. */
-const NATIVE_FORMATS: Record<Exclude<WhatsAppMediaKind, 'document'>, string[]> = {
-    image: ['image/jpeg', 'image/png'],
-    video: ['video/mp4', 'video/3gpp'],
-    audio: ['audio/aac', 'audio/mpeg', 'audio/mp4', 'audio/amr', 'audio/ogg'],
-};
-
-interface Attachment {
-    url: string;
-    name: string;
-    kind: WhatsAppMediaKind;
-    size: number;
-    /** Set when the file was downgraded to a document because WhatsApp cannot render its format. */
-    downgradedFrom?: string;
-}
-
-function formatSize(bytes: number): string {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDuration(seconds: number): string {
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-/**
- * A recording format WhatsApp will actually play, or null if this browser can only produce one it
- * rejects.
- *
- * This is the whole difficulty with voice notes: MediaRecorder's universal format is WebM/Opus, and
- * WhatsApp accepts neither WebM nor any container it does not name. MP4/AAC and Ogg/Opus are the
- * two it does accept that browsers can also record, so we take whichever is on offer and refuse
- * rather than send a file that would come back as an opaque provider error.
- */
-function pickRecordingFormat(): { mime: string; ext: string } | null {
-    if (typeof MediaRecorder === 'undefined') return null;
-    const candidates = [
-        { mime: 'audio/mp4', ext: 'm4a' },
-        { mime: 'audio/mp4;codecs=mp4a.40.2', ext: 'm4a' },
-        { mime: 'audio/ogg;codecs=opus', ext: 'ogg' },
-        { mime: 'audio/ogg', ext: 'ogg' },
-    ];
-    return candidates.find((c) => MediaRecorder.isTypeSupported(c.mime)) ?? null;
-}
-
-/**
- * Which WhatsApp message type a file should be sent as.
- *
- * A HEIC photo, a .mov clip or a FLAC track are all real files an admin will pick, and WhatsApp
- * refuses every one of them as its native type — so they are sent as documents instead, which
- * always delivers. The caller tells the admin when that happens rather than silently changing
- * what they asked for.
- */
-function classifyAttachment(file: File): { kind: WhatsAppMediaKind; downgradedFrom?: string } {
-    const mime = (file.type || '').toLowerCase();
-
-    for (const [kind, formats] of Object.entries(NATIVE_FORMATS)) {
-        const family = `${kind === 'image' ? 'image' : kind === 'video' ? 'video' : 'audio'}/`;
-        if (!mime.startsWith(family)) continue;
-        return formats.includes(mime)
-            ? { kind: kind as WhatsAppMediaKind }
-            : { kind: 'document', downgradedFrom: kind };
-    }
-
-    return { kind: 'document' };
-}
 
 interface Props {
     phone: string;
@@ -116,24 +38,28 @@ export function ReplyBox({ phone }: Props) {
     const markConversationAnswered = useInboxStore((s) => s.markConversationAnswered);
     const instituteId = getInstituteId() || '';
 
-    const [attachment, setAttachment] = useState<Attachment | null>(null);
-    const [uploading, setUploading] = useState(false);
     const [window24h, setWindow24h] = useState<SessionWindow | null>(null);
     const [mediaSupport, setMediaSupport] = useState(getInboxMediaSupport());
-    const [recording, setRecording] = useState(false);
-    const [recordedSeconds, setRecordedSeconds] = useState(0);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const recorderRef = useRef<MediaRecorder | null>(null);
-    const chunksRef = useRef<Blob[]>([]);
-    const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const discardRef = useRef(false);
+
+    const {
+        attachment,
+        clearAttachment,
+        uploading,
+        recording,
+        recordedSeconds,
+        fileInputRef,
+        openFilePicker,
+        handleFilePick,
+        startRecording,
+        stopRecording,
+    } = useAttachment({ instituteId, mediaSupport });
 
     // How much of Meta's 24-hour reply window is left. Null when the backend does not report it,
     // in which case the composer behaves exactly as it always has.
     useEffect(() => {
         let cancelled = false;
         setWindow24h(null);
-        setAttachment(null);
+        clearAttachment();
         getSessionWindow(phone, instituteId).then((w) => {
             if (cancelled) return;
             setWindow24h(w);
@@ -153,172 +79,30 @@ export function ReplyBox({ phone }: Props) {
         }
     }, [showTemplates]);
 
-    /** Validate, upload and stage one file — shared by the file picker and the voice recorder. */
-    const stageFile = useCallback(
-        async (file: File) => {
-            const { kind, downgradedFrom } = classifyAttachment(file);
-            const limit = MEDIA_LIMITS[kind];
-            if (file.size > limit) {
-                toast.error(
-                    `${file.name} is ${formatSize(file.size)}. WhatsApp allows ${formatSize(limit)} for ${kind === 'document' ? 'documents' : `${kind}s`}.`
-                );
-                return;
-            }
-
-            setUploading(true);
-            try {
-                const { userId } = getChatUser();
-                const fileId = await UploadFileInS3(
-                    file,
-                    setUploading,
-                    userId,
-                    'WHATSAPP_INBOX',
-                    instituteId,
-                    true
-                );
-                if (!fileId) {
-                    toast.error('Upload failed. Please try again.');
-                    return;
-                }
-                // WhatsApp fetches the file itself, so this has to be a public URL, not a file id.
-                const url = await getPublicUrl(fileId);
-                if (!url) {
-                    toast.error('Could not get a public link for the uploaded file.');
-                    return;
-                }
-                setAttachment({ url, name: file.name, kind, size: file.size, downgradedFrom });
-                if (downgradedFrom) {
-                    toast.info(
-                        `WhatsApp can't show ${file.type || 'this format'} as ${downgradedFrom === 'image' ? 'a photo' : `${downgradedFrom}`}, so it will be sent as a document.`
-                    );
-                }
-            } catch (err) {
-                console.error(err);
-                toast.error('Upload failed. Please try again.');
-            } finally {
-                setUploading(false);
-            }
-        },
-        [instituteId]
-    );
-
-    /** Release the mic and the timer. Safe to call twice. */
-    const teardownRecorder = useCallback(() => {
-        if (tickRef.current) {
-            clearInterval(tickRef.current);
-            tickRef.current = null;
-        }
-        recorderRef.current?.stream.getTracks().forEach((t) => t.stop());
-        recorderRef.current = null;
-        setRecording(false);
-        setRecordedSeconds(0);
-    }, []);
-
-    // Never leave the microphone open because the admin navigated away mid-recording.
-    useEffect(() => teardownRecorder, [teardownRecorder]);
-
-    const startRecording = useCallback(async () => {
-        if (mediaSupport === 'no') {
-            toast.error(
-                'Voice notes need the updated notification service. The feature is built but not deployed yet.'
-            );
-            return;
-        }
-        const format = pickRecordingFormat();
-        if (!format) {
-            toast.error(
-                'This browser can only record WebM audio, which WhatsApp rejects. Try Chrome 126+, Safari or Firefox.'
-            );
-            return;
-        }
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream, { mimeType: format.mime });
-            chunksRef.current = [];
-            discardRef.current = false;
-
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data);
-            };
-            recorder.onstop = async () => {
-                const chunks = chunksRef.current;
-                chunksRef.current = [];
-                const discarded = discardRef.current;
-                teardownRecorder();
-                if (discarded || chunks.length === 0) return;
-
-                const blob = new Blob(chunks, { type: format.mime });
-                const file = new File([blob], `voice-note-${Date.now()}.${format.ext}`, {
-                    // The bare mime without codec parameters — classifyAttachment matches on it.
-                    type: format.mime.split(';')[0],
-                });
-                await stageFile(file);
-            };
-
-            recorderRef.current = recorder;
-            recorder.start();
-            setRecording(true);
-            setRecordedSeconds(0);
-            tickRef.current = setInterval(() => setRecordedSeconds((n) => n + 1), 1000);
-        } catch (err) {
-            console.error(err);
-            toast.error('Could not access the microphone. Check the browser permission.');
-        }
-    }, [mediaSupport, stageFile, teardownRecorder]);
-
-    const stopRecording = useCallback((discard: boolean) => {
-        discardRef.current = discard;
-        const recorder = recorderRef.current;
-        if (recorder && recorder.state !== 'inactive') {
-            recorder.stop(); // onstop uploads or discards, then tears down
-        }
-    }, []);
-
-    /**
-     * A greyed-out button that does nothing when clicked reads as a bug. If the backend cannot
-     * accept attachments yet, say so out loud — `/inbox/send` ignores fields it does not know, so
-     * an older backend would deliver the caption as a plain text message and drop the file with
-     * nobody told.
-     */
-    const openFilePicker = useCallback(() => {
-        if (mediaSupport === 'no') {
-            toast.error(
-                'Attachments need the updated notification service. The feature is built but not deployed yet.'
-            );
-            return;
-        }
-        fileInputRef.current?.click();
-    }, [mediaSupport]);
-
-    const handleFilePick = useCallback(
-        async (e: React.ChangeEvent<HTMLInputElement>) => {
-            const file = e.target.files?.[0];
-            // Reset immediately so picking the same file twice still fires a change event.
-            e.target.value = '';
-            if (!file) return;
-
-            await stageFile(file);
-        },
-        [stageFile]
-    );
-
     const handleSend = useCallback(async () => {
         if ((!text.trim() && !attachment) || sending) return;
+
+        if (attachment && mediaSupport !== 'yes') {
+            toast.error(
+                mediaSupport === 'no'
+                    ? 'Attachments need the updated notification service. The feature is built but not deployed yet.'
+                    : 'Still checking whether this backend accepts attachments — try again in a moment.'
+            );
+            return;
+        }
 
         setSending(true);
         try {
             // With an attachment the typed text rides along as the caption.
             const caption = text.trim();
-            const sent = await sendReply(phone, caption, instituteId, {
-                ...(attachment
-                    ? {
-                          mediaType: attachment.kind,
-                          mediaUrl: attachment.url,
-                          filename: attachment.name,
-                      }
-                    : {}),
-            });
+            const options: SendReplyOptions = attachment
+                ? {
+                      mediaType: attachment.kind,
+                      mediaUrl: attachment.url,
+                      filename: attachment.name,
+                  }
+                : {};
+            const sent = await sendReply(phone, caption, instituteId, options);
             appendMessage(sent);
             updateConversationLastMessage(
                 phone,
@@ -329,7 +113,7 @@ export function ReplyBox({ phone }: Props) {
             // rather than waiting for the next poll.
             markConversationAnswered(phone);
             setText('');
-            setAttachment(null);
+            clearAttachment();
         } catch (err) {
             console.error(err);
             // A refused send is now recorded in the thread as "Not delivered", so point there
@@ -345,6 +129,8 @@ export function ReplyBox({ phone }: Props) {
     }, [
         text,
         attachment,
+        clearAttachment,
+        mediaSupport,
         phone,
         sending,
         appendMessage,
@@ -515,7 +301,7 @@ export function ReplyBox({ phone }: Props) {
                         </p>
                     </div>
                     <button
-                        onClick={() => setAttachment(null)}
+                        onClick={clearAttachment}
                         className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
                         title="Remove attachment"
                     >

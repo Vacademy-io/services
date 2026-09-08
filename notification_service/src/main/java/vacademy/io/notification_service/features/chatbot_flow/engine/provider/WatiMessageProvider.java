@@ -255,30 +255,8 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
 
         String formattedPhone = phone.replaceAll("[^0-9]", "");
 
-        // WATI has no JSON "send media by URL" endpoint for session messages — the old
-        // /api/ext/v3/conversations/messages/fileViaUrl returns 404. The working path is
-        // /api/v1/sendSessionFile/{whatsappNumber} with a multipart file upload. So download
-        // the media bytes first, then upload them.
-        byte[] fileBytes;
-        try {
-            fileBytes = restTemplate.getForObject(mediaUrl, byte[].class);
-        } catch (Exception e) {
-            log.error("Failed to download media for WATI session file: url={}, error={}", mediaUrl, e.getMessage());
-            throw new RuntimeException("Could not download media: " + e.getMessage());
-        }
-        if (fileBytes == null || fileBytes.length == 0) {
-            throw new RuntimeException("Downloaded media is empty: " + mediaUrl);
-        }
-
-        String safeName = (filename != null && !filename.isBlank()) ? filename : "file";
-        ByteArrayResource resource = new ByteArrayResource(fileBytes) {
-            @Override
-            public String getFilename() {
-                return safeName;
-            }
-        };
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-        form.add("file", resource);
+        form.add("file", downloadAsResource(mediaUrl, filename));
 
         String url = config.apiUrl + "/api/v1/sendSessionFile/" + formattedPhone;
         if (caption != null && !caption.isBlank()) {
@@ -296,20 +274,7 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
             if (!response.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("WATI sendSessionFile returned " + response.getStatusCode());
             }
-            // WATI returns HTTP 200 even on failure — check the "result" flag.
-            if (response.getBody() != null) {
-                JsonNode respJson = objectMapper.readTree(response.getBody());
-                if (respJson.has("result") && respJson.path("result").isBoolean()
-                        && !respJson.path("result").booleanValue()) {
-                    throw new RuntimeException("WATI sendSessionFile result=false: "
-                            + failureReason(respJson));
-                }
-                // Session-file sends usually carry no per-message id; return it when they do so
-                // the caller can attribute delivered/read webhooks to this exact message.
-                String messageId = respJson.path("message").path("whatsappMessageId").asText(null);
-                if (messageId != null && !messageId.isBlank()) return messageId;
-            }
-            return null;
+            return readSessionFileResponse(response.getBody());
         } catch (RuntimeException e) {
             log.error("Failed to send document via WATI sendSessionFile: url={}, error={}", url, e.getMessage());
             throw e;
@@ -317,6 +282,53 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
             log.error("Failed to send document via WATI sendSessionFile: url={}, error={}", url, e.getMessage());
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * WATI has no JSON "send media by URL" endpoint for session messages — the old
+     * /api/ext/v3/conversations/messages/fileViaUrl returns 404. The working path is a multipart
+     * upload, so the bytes have to travel through this service.
+     * <p>
+     * The filename matters more than it looks: WATI infers the media type from it, so a name
+     * without an extension is delivered as a document called "file".
+     */
+    private ByteArrayResource downloadAsResource(String mediaUrl, String filename) {
+        byte[] fileBytes;
+        try {
+            fileBytes = restTemplate.getForObject(mediaUrl, byte[].class);
+        } catch (Exception e) {
+            log.error("Failed to download media for WATI session file: url={}, error={}", mediaUrl, e.getMessage());
+            throw new RuntimeException("Could not download media: " + e.getMessage());
+        }
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new RuntimeException("Downloaded media is empty: " + mediaUrl);
+        }
+
+        String safeName = (filename != null && !filename.isBlank()) ? filename : "file";
+        return new ByteArrayResource(fileBytes) {
+            @Override
+            public String getFilename() {
+                return safeName;
+            }
+        };
+    }
+
+    /**
+     * The provider message id from a sendSessionFile response, or null when it carries none.
+     * WATI answers HTTP 200 even on failure, so the "result" flag is the real verdict.
+     */
+    private String readSessionFileResponse(String body) throws Exception {
+        if (body == null) return null;
+
+        JsonNode respJson = objectMapper.readTree(body);
+        if (respJson.has("result") && respJson.path("result").isBoolean()
+                && !respJson.path("result").booleanValue()) {
+            throw new RuntimeException("WATI sendSessionFile result=false: " + failureReason(respJson));
+        }
+        // Session-file sends usually carry no per-message id; return it when they do so the caller
+        // can attribute delivered/read webhooks to this exact message.
+        String messageId = respJson.path("message").path("whatsappMessageId").asText(null);
+        return (messageId != null && !messageId.isBlank()) ? messageId : null;
     }
 
     /**
