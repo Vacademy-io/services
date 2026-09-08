@@ -28,6 +28,8 @@ import { cn } from '@/lib/utils';
 interface Props {
     value: AdminActivityLogFilters;
     onChange: (next: Partial<AdminActivityLogFilters>) => void;
+    /** Reset every filter. Owned by the page so the empty state can call it too. */
+    onClear: () => void;
     onRefresh: () => void;
     isFetching: boolean;
 }
@@ -265,7 +267,7 @@ const countActiveFilters = (value: AdminActivityLogFilters): number =>
     (value.startDate ? 1 : 0) +
     (value.endDate ? 1 : 0);
 
-export function ActivityLogFilters({ value, onChange, onRefresh, isFetching }: Props) {
+export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetching }: Props) {
     const activeCount = countActiveFilters(value);
     const actorsQuery = useActivityLogActors();
 
@@ -297,16 +299,6 @@ export function ActivityLogFilters({ value, onChange, onRefresh, isFetching }: P
         const range = preset.range();
         return range.startDate === value.startDate && range.endDate === value.endDate;
     });
-
-    const clearAll = () =>
-        onChange({
-            entityTypes: undefined,
-            actions: undefined,
-            actorIds: undefined,
-            startDate: undefined,
-            endDate: undefined,
-            page: 0,
-        });
 
     // MyButton's onAsyncClick owns the spinner and the double-submit guard, so
     // this only has to do the work and report the outcome.
@@ -347,7 +339,7 @@ export function ActivityLogFilters({ value, onChange, onRefresh, isFetching }: P
                                 buttonType="text"
                                 scale="medium"
                                 className="sm:!min-w-0"
-                                onClick={clearAll}
+                                onClick={onClear}
                             >
                                 <X className="mr-1 size-4" /> Clear
                             </MyButton>

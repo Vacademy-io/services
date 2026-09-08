@@ -9,6 +9,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { MyButton } from '@/components/design-system/button';
 import { MyPagination } from '@/components/design-system/pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info, MagnifyingGlass, WarningCircle } from '@phosphor-icons/react';
@@ -24,6 +25,9 @@ interface Props {
     isError: boolean;
     onRowClick: (log: AdminActivityLog) => void;
     onPageChange: (page: number) => void;
+    /** Whether the empty result is the filters' doing or a genuinely empty log. */
+    hasActiveFilters: boolean;
+    onClearFilters: () => void;
 }
 
 // The audit log's actions are free-form strings, so a StatusChip (which renders
@@ -241,7 +245,15 @@ const statusTone = (status: number | null | undefined): string => {
     return 'bg-danger-500';
 };
 
-export function ActivityLogTable({ page, isLoading, isError, onRowClick, onPageChange }: Props) {
+export function ActivityLogTable({
+    page,
+    isLoading,
+    isError,
+    onRowClick,
+    onPageChange,
+    hasActiveFilters,
+    onClearFilters,
+}: Props) {
     if (isError) {
         return (
             <Card className="flex items-start gap-2 border-danger-200 bg-danger-50 p-4">
@@ -317,7 +329,10 @@ export function ActivityLogTable({ page, isLoading, isError, onRowClick, onPageC
                             ) : rows.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={5} className="py-12">
-                                        <EmptyState />
+                                        <EmptyState
+                                            hasActiveFilters={hasActiveFilters}
+                                            onClearFilters={onClearFilters}
+                                        />
                                     </TableCell>
                                 </TableRow>
                             ) : (
@@ -424,16 +439,47 @@ export function ActivityLogTable({ page, isLoading, isError, onRowClick, onPageC
     );
 }
 
-function EmptyState() {
+/**
+ * An empty table has two very different meanings, and reading "no entries" as
+ * "the log is broken" is the easy mistake: either the filters exclude
+ * everything, or that resource has genuinely never been recorded — a resource
+ * only starts appearing once someone performs that action on a version of the
+ * service that audits it. Say which, and offer the one-click way out.
+ */
+function EmptyState({
+    hasActiveFilters,
+    onClearFilters,
+}: {
+    hasActiveFilters: boolean;
+    onClearFilters: () => void;
+}) {
     return (
         <div className="flex flex-col items-center justify-center gap-2 text-center">
             <span className="inline-flex size-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
                 <MagnifyingGlass className="size-5" />
             </span>
             <p className="text-body font-medium text-neutral-700">No audit entries</p>
-            <p className="text-caption text-neutral-500">
-                Nothing matches the current filters. Try clearing them or widening the date range.
-            </p>
+            {hasActiveFilters ? (
+                <>
+                    <p className="max-w-md text-caption text-neutral-500">
+                        Nothing matches the current filters. A resource shows up here only after
+                        someone performs that action — try clearing the filters or widening the date
+                        range.
+                    </p>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        className="mt-1 sm:!min-w-0"
+                        onClick={onClearFilters}
+                    >
+                        Clear filters
+                    </MyButton>
+                </>
+            ) : (
+                <p className="text-caption text-neutral-500">
+                    Admin actions across the institute will appear here as they happen.
+                </p>
+            )}
         </div>
     );
 }

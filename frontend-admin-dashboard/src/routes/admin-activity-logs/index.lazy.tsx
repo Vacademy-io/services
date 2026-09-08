@@ -85,6 +85,24 @@ function AdminActivityLogsView() {
         });
     };
 
+    /** One definition of "no filters", shared by the filter bar and the empty state. */
+    const clearFilters = () =>
+        updateFilters({
+            entityTypes: undefined,
+            actions: undefined,
+            actorIds: undefined,
+            startDate: undefined,
+            endDate: undefined,
+            page: 0,
+        });
+
+    const hasActiveFilters =
+        (filters.entityTypes?.length ?? 0) > 0 ||
+        (filters.actions?.length ?? 0) > 0 ||
+        (filters.actorIds?.length ?? 0) > 0 ||
+        filters.startDate != null ||
+        filters.endDate != null;
+
     return (
         <>
             <Helmet>
@@ -122,6 +140,7 @@ function AdminActivityLogsView() {
             <ActivityLogFilters
                 value={filters}
                 onChange={updateFilters}
+                onClear={clearFilters}
                 onRefresh={() => refetch()}
                 isFetching={isFetching}
             />
@@ -133,6 +152,8 @@ function AdminActivityLogsView() {
                     isError={isError}
                     onRowClick={setSelectedLog}
                     onPageChange={(page) => updateFilters({ page })}
+                    hasActiveFilters={hasActiveFilters}
+                    onClearFilters={clearFilters}
                 />
             </div>
 
