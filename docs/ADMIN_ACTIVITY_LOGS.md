@@ -504,6 +504,26 @@ Display-settings integration: `sidebar/constant.ts` (`controlledTabs`), `sidebar
 
 9. **The `clientId` header is required.** The axios interceptor in [axiosInstance.ts](../frontend-admin-dashboard/src/lib/auth/axiosInstance.ts) attaches it automatically from `getInstituteId()`. If you ever build a non-axios request path (e.g., a worker-side fetch), make sure that header is included or audit silently drops the row.
 
+10. **A narrator can only read admin_core's own database.** `users` (and the rest
+    of auth_service's schema) does **not** exist in `admin_core_service`. Resolving a
+    person through `vacademy.io.common.auth.repository.UserRepository` compiles,
+    starts, and then throws `relation "users" does not exist` on every call — which
+    the narrator's catch swallows, exactly as it must, leaving the description
+    naming a raw UUID. That shipped on 2026-09-08 and produced live rows reading
+    *"changed lead tier of 664d3077-29b4-4dcb-8c64-d2ed9417f529"*. Inside admin_core
+    the name sources are: `student.full_name` (enrolled learners),
+    `audience_response.parent_name/email/mobile` (a lead's own form), and
+    `user_lead_profile.assigned_counselor_name` (the only staff name written down
+    here). `CrmAuditNarratorNamingTest` fails the build if the narrator ever takes a
+    dependency on `common.auth.repository` again.
+
+11. **A derived query name is validated at pod startup, not at compile time.** A typo
+    in `findFirstByAssignedCounselorIdAnd…` does not fail a build — it fails every
+    pod's context refresh, taking the whole service down for every institute. There
+    is no in-memory database on this module's test classpath, so
+    `CrmAuditNarratorNamingTest#derivedQueriesResolve` runs Spring's own `PartTree`
+    parser over the repository's derived methods to catch it without one.
+
 ---
 
 ## CRM coverage (added 2026-09-08)

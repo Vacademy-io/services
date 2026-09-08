@@ -12,9 +12,10 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRepos
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
+import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
-import vacademy.io.common.auth.entity.User;
-import vacademy.io.common.auth.repository.UserRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,7 +62,7 @@ public class CrmAuditNarrator {
     private UserLeadProfileRepository userLeadProfileRepository;
 
     @Autowired
-    private UserRepository userRepository;
+    private InstituteStudentRepository instituteStudentRepository;
 
     // ── Audiences (campaigns) ─────────────────────────────────────────────
 
@@ -129,8 +130,8 @@ public class CrmAuditNarrator {
     // ── Leads ─────────────────────────────────────────────────────────────
 
     /**
-     * Display name for one lead (an {@code audience_response} row): the lead's
-     * own user record first, then the parent/guardian name captured on the
+     * Display name for one lead (an {@code audience_response} row): their
+     * learner record if they have one, then the contact details captured on the
      * form, then the raw id.
      */
     public String leadFor(String audienceResponseId) {
@@ -142,23 +143,84 @@ public class CrmAuditNarrator {
             if (response == null) {
                 return audienceResponseId;
             }
-            String name = personFor(response.getUserId());
-            if (!isBlank(name) && !name.equals(response.getUserId())) {
-                return name;
+            String learnerName = studentNameFor(response.getUserId());
+            if (learnerName != null) {
+                return learnerName;
             }
-            if (!isBlank(response.getParentName())) {
-                return response.getParentName().trim();
-            }
-            if (!isBlank(response.getParentEmail())) {
-                return response.getParentEmail().trim();
-            }
-            if (!isBlank(response.getParentMobile())) {
-                return response.getParentMobile().trim();
-            }
-            return audienceResponseId;
+            String contact = contactLabel(response);
+            return contact != null ? contact : audienceResponseId;
         } catch (Exception e) {
             logger.warn("Could not resolve lead name for {}: {}", audienceResponseId, e.getMessage());
             return audienceResponseId;
+        }
+    }
+
+    /**
+     * Display name for a lead identified by their <em>user</em> id, which is
+     * how the lead-profile endpoints (status, tier, conversion, counsellor
+     * assignment) address them.
+     *
+     * <p>Note what this deliberately does not do: look the person up in
+     * {@code users}. That table belongs to auth_service and does not exist in
+     * this service's database, so the query throws, the catch swallows it, and
+     * every description ends up naming a raw UUID — which is exactly what
+     * shipped and what this replaces. Everything below is inside admin_core's
+     * own schema.
+     */
+    public String leadUserFor(String leadUserId) {
+        if (isBlank(leadUserId)) {
+            return null;
+        }
+        String learnerName = studentNameFor(leadUserId);
+        if (learnerName != null) {
+            return learnerName;
+        }
+        try {
+            return audienceResponseRepository.findByUserId(leadUserId).stream()
+                    .filter(Objects::nonNull)
+                    .map(this::contactLabel)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(leadUserId);
+        } catch (Exception e) {
+            logger.warn("Could not resolve lead name for user {}: {}", leadUserId, e.getMessage());
+            return leadUserId;
+        }
+    }
+
+    /** Name, email or phone off a lead's own form submission, in that order. */
+    private String contactLabel(AudienceResponse response) {
+        if (response == null) {
+            return null;
+        }
+        if (!isBlank(response.getParentName())) {
+            return response.getParentName().trim();
+        }
+        if (!isBlank(response.getParentEmail())) {
+            return response.getParentEmail().trim();
+        }
+        if (!isBlank(response.getParentMobile())) {
+            return response.getParentMobile().trim();
+        }
+        return null;
+    }
+
+    /** Learner name for a user id, or null when they are not enrolled here. */
+    private String studentNameFor(String userId) {
+        if (isBlank(userId)) {
+            return null;
+        }
+        try {
+            return instituteStudentRepository.findByUserId(userId).stream()
+                    .filter(Objects::nonNull)
+                    .map(Student::getFullName)
+                    .filter(name -> !isBlank(name))
+                    .map(String::trim)
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception e) {
+            logger.warn("Could not resolve learner name for {}: {}", userId, e.getMessage());
+            return null;
         }
     }
 
@@ -236,21 +298,37 @@ public class CrmAuditNarrator {
 
     // ── People (counsellors, staff) ───────────────────────────────────────
 
-    /** Full name of any platform user (counsellor, staff), falling back to the id. */
+    /**
+     * Name of a staff member — a counsellor, a pool member, whoever a target
+     * was set for — falling back to the id.
+     *
+     * <p>The only record of a staff name inside admin_core's own database is
+     * the denormalized {@code assigned_counselor_name} the CRM writes onto a
+     * lead profile, so that is what this reads. A staff member who has never
+     * been assigned a lead is named by their learner record if they happen to
+     * have one, and otherwise stays an id — better than the previous behaviour,
+     * which was an id every single time because the lookup queried a table this
+     * service cannot see.
+     */
     public String personFor(String userId) {
         if (isBlank(userId)) {
             return null;
         }
         try {
-            return userRepository.findById(userId)
-                    .map(User::getFullName)
+            String counsellorName = userLeadProfileRepository
+                    .findFirstByAssignedCounselorIdAndAssignedCounselorNameIsNotNull(userId)
+                    .map(UserLeadProfile::getAssignedCounselorName)
                     .filter(name -> !isBlank(name))
                     .map(String::trim)
-                    .orElse(userId);
+                    .orElse(null);
+            if (counsellorName != null) {
+                return counsellorName;
+            }
         } catch (Exception e) {
-            logger.warn("Could not resolve user name for {}: {}", userId, e.getMessage());
-            return userId;
+            logger.warn("Could not resolve counsellor name for {}: {}", userId, e.getMessage());
         }
+        String learnerName = studentNameFor(userId);
+        return learnerName != null ? learnerName : userId;
     }
 
     /** Names one person, or counts several — for bulk assign/target actions. */
@@ -294,7 +372,7 @@ public class CrmAuditNarrator {
      * callers only send the id, which we then resolve.
      */
     public String counsellorAssignment(String leadUserId, String counsellorId, String counsellorName) {
-        String who = personFor(leadUserId);
+        String who = leadUserFor(leadUserId);
         if (isBlank(counsellorId)) {
             return who == null ? null : "unassigned counsellor from lead " + who;
         }
