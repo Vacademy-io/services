@@ -1541,6 +1541,94 @@ export default function StudentDisplaySettings(): JSX.Element {
                     )}
                 </div>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{t('concentration.cardTitle')}</CardTitle>
+                    <CardDescription>
+                        {t('concentration.cardDescription', {
+                            learnerPlural: getTerminologyPlural(
+                                RoleTerms.Learner,
+                                SystemTerms.Learner
+                            ).toLowerCase(),
+                        })}
+                    </CardDescription>
+                </CardHeader>
+                <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.concentration.enabled}
+                            onCheckedChange={(v) =>
+                                update('concentration', {
+                                    ...settings.concentration,
+                                    enabled: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">{t('concentration.enableFocusCheck')}</Label>
+                    </div>
+                    {settings.concentration.enabled && (
+                        <div className="flex flex-wrap items-end gap-4 border-t pt-3">
+                            <div className="space-y-1">
+                                <Label className="text-xs">
+                                    {t('concentration.minMinutes')}
+                                </Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={120}
+                                    className="h-8 w-24"
+                                    value={settings.concentration.frequency.min_minutes}
+                                    onChange={(e) => {
+                                        // The learner app picks a random gap in
+                                        // [min, max]; an inverted range silently
+                                        // reverses it, so drag max along instead.
+                                        const min = Number(e.target.value) || 1;
+                                        update('concentration', {
+                                            ...settings.concentration,
+                                            frequency: {
+                                                min_minutes: min,
+                                                max_minutes: Math.max(
+                                                    min,
+                                                    settings.concentration.frequency.max_minutes
+                                                ),
+                                            },
+                                        });
+                                    }}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">
+                                    {t('concentration.maxMinutes')}
+                                </Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={120}
+                                    className="h-8 w-24"
+                                    value={settings.concentration.frequency.max_minutes}
+                                    onChange={(e) => {
+                                        const max = Number(e.target.value) || 1;
+                                        update('concentration', {
+                                            ...settings.concentration,
+                                            frequency: {
+                                                min_minutes: Math.min(
+                                                    max,
+                                                    settings.concentration.frequency.min_minutes
+                                                ),
+                                                max_minutes: max,
+                                            },
+                                        });
+                                    }}
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t('concentration.frequencyHint')}
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </Card>
             </section>
 
             <section id="grp-notifications" className="space-y-6">
