@@ -13,6 +13,12 @@ export interface InboxConversation {
     lastMessage?: string;
     lastMessageType?: string;
     lastMessageTime?: string;
+    /**
+     * What WhatsApp said about the last message when it was outgoing: SENT | DELIVERED | READ |
+     * FAILED. Absent when nothing has been reported yet (or when the last message was incoming),
+     * which the row draws as a single tick — sent, nothing more known.
+     */
+    lastMessageStatus?: string;
     unreadCount?: number;
 
     /** The chatbot couldn't answer and nobody has replied yet — shown as "Unanswered". */

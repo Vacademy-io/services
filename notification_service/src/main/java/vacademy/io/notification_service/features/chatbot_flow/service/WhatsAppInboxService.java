@@ -96,28 +96,12 @@ public class WhatsAppInboxService {
         Map<String, ChatbotEscalation> pending = escalationService.findPendingByPhone(instituteId, phones);
         Map<String, Long> failedMap = batchFailedCounts(instituteId, phones);
 
-        return logs.stream().map(nl -> {
-            ChatbotEscalation escalation = pending.get(nl.getChannelId());
-            boolean lastFromLearner = !nl.getNotificationType().contains("OUTGOING");
-            return InboxConversationDTO.builder()
-                    .phone(nl.getChannelId())
-                    .senderName(nl.getSenderName())
-                    .userId(nl.getUserId())
-                    .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
-                    .lastMessageType(lastFromLearner ? "INCOMING" : "OUTGOING")
-                    .lastMessageTime(nl.getNotificationDate())
-                    .unreadCount(unreadMap.getOrDefault(nl.getChannelId(), 0L))
-                    // Same rule the Unanswered filter selects on, so the badge, the header count
-                    // and the tab can never disagree about which conversations are waiting.
-                    .awaitingReply(escalation != null || lastFromLearner)
-                    .escalationId(escalation != null ? escalation.getId() : null)
-                    .escalationReason(escalation != null ? escalation.getReason() : null)
-                    .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)
-                    .escalatedAt(escalation != null && escalation.getCreatedAt() != null
-                            ? escalation.getCreatedAt().toInstant() : null)
-                    .failedCount(failedMap.getOrDefault(nl.getChannelId(), 0L))
-                    .build();
-        }).collect(Collectors.toList());
+        return logs.stream()
+                .map(nl -> toConversation(nl, instituteId, templateCache,
+                        pending.get(nl.getChannelId()),
+                        unreadMap.getOrDefault(nl.getChannelId(), 0L),
+                        failedMap.getOrDefault(nl.getChannelId(), 0L)))
+                .collect(Collectors.toList());
     }
 
     /** Applies the requested filter to the conversation page query. */
@@ -142,6 +126,49 @@ public class WhatsAppInboxService {
         }
 
         return notificationLogRepository.findConversationsForInbox(instituteId, limit, offset);
+    }
+
+    /** One conversation row, however it was found — listed, filtered or searched. */
+    private InboxConversationDTO toConversation(NotificationLog nl, String instituteId,
+                                                Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache,
+                                                ChatbotEscalation escalation,
+                                                long unreadCount, long failedCount) {
+        boolean lastFromLearner = !nl.getNotificationType().contains("OUTGOING");
+        return InboxConversationDTO.builder()
+                .phone(nl.getChannelId())
+                .senderName(nl.getSenderName())
+                .userId(nl.getUserId())
+                .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
+                .lastMessageType(lastFromLearner ? "INCOMING" : "OUTGOING")
+                .lastMessageTime(nl.getNotificationDate())
+                .lastMessageStatus(lastFromLearner ? null : lastMessageStatus(nl))
+                .unreadCount(unreadCount)
+                // Same rule the Unanswered filter selects on, so the badge, the header count
+                // and the tab can never disagree about which conversations are waiting.
+                .awaitingReply(escalation != null || lastFromLearner)
+                .escalationId(escalation != null ? escalation.getId() : null)
+                .escalationReason(escalation != null ? escalation.getReason() : null)
+                .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)
+                .escalatedAt(escalation != null && escalation.getCreatedAt() != null
+                        ? escalation.getCreatedAt().toInstant() : null)
+                .failedCount(failedCount)
+                .build();
+    }
+
+    /**
+     * What the provider said about this outgoing message, for the ticks on a conversation row.
+     * <p>
+     * {@code delivery_status} is WhatsApp's own verdict from its status webhook. A send the
+     * provider refused outright never gets a webhook at all, so its only record is the FAILED
+     * marker on message_payload — the same one the "Not delivered" filter counts, read here so the
+     * two agree. Null means nothing has been reported, which the UI draws as a single tick.
+     */
+    private String lastMessageStatus(NotificationLog nl) {
+        if (nl.getDeliveryStatus() != null) return nl.getDeliveryStatus();
+        String payload = nl.getMessagePayload();
+        boolean refusedOnSend = payload != null
+                && payload.contains("\"deliveryStatus\":\"" + WhatsAppSendFailureService.FAILED_STATUS + "\"");
+        return refusedOnSend ? WhatsAppSendFailureService.FAILED_STATUS : null;
     }
 
     private Map<String, Long> batchFailedCounts(String instituteId, List<String> phones) {
@@ -261,27 +288,14 @@ public class WhatsAppInboxService {
         Map<String, ChatbotEscalation> pending = escalationService.findPendingByPhone(instituteId, phones);
         Map<String, Long> failedMap = batchFailedCounts(instituteId, phones);
 
-        return logs.stream().map(nl -> {
-            ChatbotEscalation escalation = pending.get(nl.getChannelId());
-            boolean lastFromLearner = !nl.getNotificationType().contains("OUTGOING");
-            return InboxConversationDTO.builder()
-                    .phone(nl.getChannelId())
-                    .senderName(nl.getSenderName())
-                    .userId(nl.getUserId())
-                    .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
-                    .lastMessageType(lastFromLearner ? "INCOMING" : "OUTGOING")
-                    .lastMessageTime(nl.getNotificationDate())
-                    // Same rule as the conversation list, so a searched row and a listed row never
-                    // describe the same conversation differently.
-                    .awaitingReply(escalation != null || lastFromLearner)
-                    .escalationId(escalation != null ? escalation.getId() : null)
-                    .escalationReason(escalation != null ? escalation.getReason() : null)
-                    .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)
-                    .escalatedAt(escalation != null && escalation.getCreatedAt() != null
-                            ? escalation.getCreatedAt().toInstant() : null)
-                    .failedCount(failedMap.getOrDefault(nl.getChannelId(), 0L))
-                    .build();
-        }).collect(Collectors.toList());
+        // Built by the same method as the listed rows, so a searched conversation and a listed one
+        // can never describe the same chat differently. Search carries no unread count — it is not
+        // a work list, and the extra batch query would buy nothing.
+        return logs.stream()
+                .map(nl -> toConversation(nl, instituteId, templateCache,
+                        pending.get(nl.getChannelId()), 0L,
+                        failedMap.getOrDefault(nl.getChannelId(), 0L)))
+                .collect(Collectors.toList());
     }
 
     public InboxMessageDTO sendReply(String phone, String text, String instituteId) {

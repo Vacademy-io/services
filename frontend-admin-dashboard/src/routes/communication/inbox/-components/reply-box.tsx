@@ -18,6 +18,7 @@ import {
     type WhatsAppMediaKind,
 } from '../-services/inbox-api';
 import { useInboxStore } from '../-stores/inbox-store';
+import { describeApiError, explainWhatsAppFailure } from '../-utils/whatsapp-errors';
 import { getInstituteId } from '@/constants/helper';
 import { getChatUser } from '@/services/chat/getChatUser';
 import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
@@ -332,13 +333,15 @@ export function ReplyBox({ phone }: Props) {
             setAttachment(null);
         } catch (err) {
             console.error(err);
-            // A refused send is now recorded in the thread as "Not delivered", so point there
-            // instead of leaving the admin with only a toast.
-            const axiosErr = err as { response?: { data?: { message?: string } } };
-            toast.error(
-                axiosErr?.response?.data?.message ||
-                    'Failed to send message. Session may have expired (24hr window). It is marked as not delivered in the chat.'
-            );
+            // A refused send is recorded in the thread as "Not delivered", so the toast says what
+            // WhatsApp actually objected to — "24-hour reply window closed" rather than the raw
+            // "Re-engagement message (131047)" — and points at the thread for the rest.
+            const { title, detail } = describeApiError(err, 'Message not sent');
+            toast.error(title, {
+                description: detail
+                    ? `${detail} It is marked as not delivered in the chat.`
+                    : 'It is marked as not delivered in the chat.',
+            });
         } finally {
             setSending(false);
         }
@@ -410,11 +413,17 @@ export function ReplyBox({ phone }: Props) {
                 updateConversationLastMessage(phone, `[Template] ${template.name}`, 'OUTGOING');
                 setShowTemplates(false);
             } else {
-                toast.error(`Failed to send template: ${response.results?.[0]?.error || 'Unknown error'}`);
+                const failure = explainWhatsAppFailure(response.results?.[0]?.error);
+                toast.error(`Template "${template.name}" was not sent`, {
+                    description: failure
+                        ? [failure.title, failure.detail].filter(Boolean).join(' — ')
+                        : 'The provider rejected the send without giving a reason.',
+                });
             }
         } catch (err) {
             console.error(err);
-            toast.error('Failed to send template');
+            const { title, detail } = describeApiError(err, `Could not send template "${template.name}"`);
+            toast.error(title, detail ? { description: detail } : undefined);
         } finally {
             setSending(false);
         }

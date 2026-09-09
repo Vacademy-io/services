@@ -659,7 +659,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     List<Object[]> batchCountUnreadMessages(@Param("phones") List<String> phones);
 
     /**
-     * Batch count undelivered outgoing messages per phone, in one query.
+     * Batch count the outgoing messages per phone that are <b>still</b> undelivered, in one query.
      *
      * <p>"Undelivered" has two independent sources and both count:
      * <ul>
@@ -673,16 +673,35 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
      * in as a bind parameter rather than a literal so the JSON colon can never be mistaken for a
      * named parameter by the query parser.
      *
-     * <p>Returns rows of (channel_id, failed_count).
+     * <p><b>Only failures nothing has recovered from count.</b> A failure with a later message
+     * WhatsApp positively reported (SENT, DELIVERED or READ) is history, not a problem: the channel
+     * demonstrably works and there is nothing for an admin to do. Counting every failure that ever
+     * happened badged a conversation "Not delivered" for good — one rejected free-form reply on a
+     * Sunday kept the badge and the tab entry through five later messages that were all read.
+     *
+     * <p>Returns rows of (channel_id, failed_count); a conversation that has recovered is absent
+     * rather than present with a zero.
+     *
+     * <p>Written as a NOT EXISTS rather than a window function so it states the rule directly —
+     * "this failure has no delivered message after it" — and means the same thing on Postgres and
+     * on the H2 the @SpringBootTest suite runs against.
      */
     @Query(value = """
-            SELECT nl.channel_id, COUNT(*) AS failed_count
-            FROM notification_log nl
-            WHERE nl.institute_id = :instituteId
-              AND nl.channel_id IN (:phones)
-              AND nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
-              AND (nl.delivery_status = 'FAILED' OR nl.message_payload LIKE :failedMarker)
-            GROUP BY nl.channel_id
+            SELECT f.channel_id, COUNT(*) AS failed_count
+            FROM notification_log f
+            WHERE f.institute_id = :instituteId
+              AND f.channel_id IN (:phones)
+              AND f.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND (f.delivery_status = 'FAILED' OR f.message_payload LIKE :failedMarker)
+              AND NOT EXISTS (
+                    SELECT 1 FROM notification_log ok
+                    WHERE ok.institute_id = f.institute_id
+                      AND ok.channel_id = f.channel_id
+                      AND ok.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+                      AND ok.delivery_status IN ('SENT', 'DELIVERED', 'READ')
+                      AND ok.notification_date > f.notification_date
+              )
+            GROUP BY f.channel_id
             """, nativeQuery = true)
     List<Object[]> batchCountFailedMessages(@Param("instituteId") String instituteId,
                                             @Param("phones") List<String> phones,
@@ -722,11 +741,15 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("offset") int offset);
 
     /**
-     * Latest message per conversation, restricted to conversations that contain at least one
-     * undelivered outgoing message — the "Not delivered" filter in the WhatsApp Inbox. Both
-     * sources of "undelivered" count, exactly as in {@link #batchCountFailedMessages}: a failure
-     * WhatsApp reported afterwards on its status webhook ({@code delivery_status}), and a send the
-     * provider refused outright (the message_payload marker).
+     * Latest message per conversation, restricted to conversations whose newest news is a failure
+     * — the "Not delivered" filter in the WhatsApp Inbox. Both sources of "undelivered" count,
+     * exactly as in {@link #batchCountFailedMessages}: a failure WhatsApp reported afterwards on
+     * its status webhook ({@code delivery_status}), and a send the provider refused outright (the
+     * message_payload marker).
+     *
+     * <p>And, exactly as there, a failure a later delivered message has superseded does not
+     * qualify. The tab is a work list; a conversation whose last five messages were read has
+     * nothing on it to act on, however badly one message went three days ago.
      */
     @Query(value = """
             SELECT * FROM (
@@ -735,10 +758,18 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                 WHERE nl.institute_id = :instituteId
                   AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                   AND nl.channel_id IN (
-                        SELECT f.channel_id FROM notification_log f
+                        SELECT DISTINCT f.channel_id FROM notification_log f
                         WHERE f.institute_id = :instituteId
                           AND f.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
                           AND (f.delivery_status = 'FAILED' OR f.message_payload LIKE :failedMarker)
+                          AND NOT EXISTS (
+                                SELECT 1 FROM notification_log ok
+                                WHERE ok.institute_id = f.institute_id
+                                  AND ok.channel_id = f.channel_id
+                                  AND ok.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+                                  AND ok.delivery_status IN ('SENT', 'DELIVERED', 'READ')
+                                  AND ok.notification_date > f.notification_date
+                          )
                   )
                 ORDER BY nl.channel_id, nl.notification_date DESC
             ) conversations
