@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import vacademy.io.admin_core_service.features.audience.service.PublicLeadRateLimiter;
+import vacademy.io.admin_core_service.features.catalogue_analytics.service.CatalogueAnalyticsRateLimiter;
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmTrackRequest;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 
@@ -19,9 +19,8 @@ import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttrib
  *
  * Unauthenticated by necessity — the person submitting a public form has no
  * token yet. Consequences, handled here:
- *  - rate limited per IP and per institute, reusing the LEAD limiter (this
- *    fires once per successful submission, exactly the shape that limiter is
- *    tuned for) rather than the far looser page-view beacon limiter.
+ *  - rate limited per IP and per institute on its OWN counters, so telemetry
+ *    can never spend the budget that real lead submissions need.
  *  - always answers 204. Whether a touch was recorded is not the caller's
  *    business, and a failure here must never surface as an error on a form the
  *    learner has already successfully submitted.
@@ -38,8 +37,13 @@ public class OpenUtmAttributionController {
     @Autowired
     private UtmAttributionService service;
 
+    // NOT PublicLeadRateLimiter: that one's 8/minute is the budget for actual
+    // LEAD submissions, and sharing it means a tagged campaign's telemetry can
+    // 429 a real lead from the same IP (a school or cafe behind one NAT).
+    // Losing an attribution row must never cost a lead. This limiter exists for
+    // exactly this class of best-effort telemetry and keeps its own counters.
     @Autowired
-    private PublicLeadRateLimiter rateLimiter;
+    private CatalogueAnalyticsRateLimiter rateLimiter;
 
     @PostMapping("/track")
     public ResponseEntity<Void> track(@RequestBody UtmTrackRequest body, HttpServletRequest request) {

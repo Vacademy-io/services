@@ -38,8 +38,29 @@ export type UtmSourceType =
  * expected to remember the convention on every link they ever build.
  */
 export const normalizeUtmValue = (value: string): string =>
+    normalizeUtmValueLive(value.trim())
+        // Strip edge hyphens too. A leading or trailing SPACE becomes a hyphen
+        // in the live pass, and trimming whitespace afterwards cannot remove
+        // it — so "  Diwali Sale  " typed into the box would finalise as
+        // "-diwali-sale-", a different report row from the pasted "diwali-sale".
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 120);
+
+/**
+ * Keystroke-safe normalisation: everything {@link normalizeUtmValue} does
+ * EXCEPT trimming.
+ *
+ * The trim is what makes the full version unusable while someone is typing.
+ * "Black Friday" is entered a character at a time, and the moment the space is
+ * typed the value is still "black " — a trailing space, which trim() deletes.
+ * The next character then lands flush against the previous word and the user
+ * silently gets "blackfriday" instead of "black-friday", with no way to type
+ * the hyphen themselves (the charset filter would have to allow it, and they
+ * would have to know to). Keeping the space here lets it become a hyphen on the
+ * next keystroke; the trim happens once, when the value is finalised.
+ */
+export const normalizeUtmValueLive = (value: string): string =>
     value
-        .trim()
         .toLowerCase()
         .replace(/\s+/g, '-')
         // Keep the characters GA treats as safe; drop the rest rather than

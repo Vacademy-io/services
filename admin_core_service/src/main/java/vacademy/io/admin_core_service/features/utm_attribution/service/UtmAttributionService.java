@@ -83,7 +83,7 @@ public class UtmAttributionService {
             }
 
             Timestamp since = Timestamp.from(Instant.now().minus(DEDUPE_WINDOW_MINUTES, ChronoUnit.MINUTES));
-            if (repository.countRecentDuplicates(request.getInstituteId(), userId, email,
+            if (repository.countRecentDuplicates(request.getInstituteId(), userId, email, mobile,
                     sourceType, sourceId, utmCampaign, utmSource, since) > 0) {
                 return null;
             }
@@ -103,10 +103,6 @@ public class UtmAttributionService {
                     .referrerHost(referrerHost(request.getReferrer()))
                     .landingPath(landingPath(request.getLandingUrl()))
                     .build());
-
-            // A surface that learns the user id only now can still claim the
-            // rows it wrote earlier under the same email/mobile.
-            if (userId != null) linkPendingRows(request.getInstituteId(), userId, email, mobile);
 
             return saved;
         } catch (Exception e) {
@@ -142,10 +138,27 @@ public class UtmAttributionService {
                 .build());
     }
 
-    /** Every touch for one learner, oldest first. */
-    public List<UtmAttributionResponse> findForUser(String instituteId, String userId) {
-        if (isBlank(instituteId) || isBlank(userId)) return List.of();
-        return repository.findByInstituteIdAndUserIdOrderByCreatedAtAsc(instituteId, userId)
+    /**
+     * Every touch for one learner, oldest first.
+     *
+     * Takes the contact details as well as the user id because three of the six
+     * capture surfaces never learn a user id at submit time. Matching on user id
+     * alone left those rows unreachable, so the side-view card was permanently
+     * empty for audience, live-session and catalogue leads — the very surfaces
+     * the feature exists to measure.
+     */
+    public List<UtmAttributionResponse> findForUser(String instituteId, String userId,
+                                                    String email, String mobileNumber) {
+        if (isBlank(instituteId)) return List.of();
+        String user = trim(userId, 255);
+        String mail = lower(trim(email, 255));
+        // A bare country code is not an identity. Optional phone fields in this
+        // product save as "+91", so matching on one would join together every
+        // learner who skipped the field.
+        String mobile = matchableMobile(trim(mobileNumber, 32));
+        // Nothing to match on: answer empty rather than scanning the institute.
+        if (user == null && mail == null && mobile == null) return List.of();
+        return repository.findForLearner(instituteId, user, mail, mobile)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -166,15 +179,6 @@ public class UtmAttributionService {
         return out;
     }
 
-    /** Attach earlier anonymous rows to the person we now know they were. */
-    private void linkPendingRows(String instituteId, String userId, String email, String mobile) {
-        if (email == null && mobile == null) return;
-        List<UtmAttribution> pending = repository.findUnlinkedByContact(instituteId, email, mobile);
-        if (pending.isEmpty()) return;
-        for (UtmAttribution row : pending) row.setUserId(userId);
-        repository.saveAll(pending);
-    }
-
     private UtmAttributionResponse toResponse(UtmAttribution entity) {
         return UtmAttributionResponse.builder()
                 .id(entity.getId())
@@ -189,6 +193,20 @@ public class UtmAttributionService {
                 .landingPath(entity.getLandingPath())
                 .createdAt(entity.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * A mobile number is only usable as a match key when it actually carries a
+     * subscriber number. Anything with fewer than 8 digits is a country code, a
+     * placeholder, or a typo, and using it would match unrelated learners.
+     */
+    private static String matchableMobile(String mobile) {
+        if (mobile == null) return null;
+        int digits = 0;
+        for (int i = 0; i < mobile.length(); i++) {
+            if (Character.isDigit(mobile.charAt(i))) digits++;
+        }
+        return digits >= 8 ? mobile : null;
     }
 
     private String normaliseSourceType(String raw) {

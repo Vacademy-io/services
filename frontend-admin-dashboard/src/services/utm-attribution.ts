@@ -16,8 +16,12 @@ export interface UtmAttributionRecord {
     created_at: string | null;
 }
 
-export const utmAttributionQueryKey = (userId: string, instituteId: string) =>
-    ['utm-attribution', userId, instituteId] as const;
+export const utmAttributionQueryKey = (
+    userId: string,
+    instituteId: string,
+    email?: string,
+    mobileNumber?: string
+) => ['utm-attribution', userId, instituteId, email ?? '', mobileNumber ?? ''] as const;
 
 /**
  * Every campaign touch recorded for one learner, oldest first.
@@ -29,13 +33,27 @@ export const utmAttributionQueryKey = (userId: string, instituteId: string) =>
  */
 export const fetchUtmAttributionForUser = async (
     userId: string,
-    instituteId: string
+    instituteId: string,
+    email?: string,
+    mobileNumber?: string
 ): Promise<UtmAttributionRecord[]> => {
-    if (!userId || !instituteId) return [];
+    // Email/mobile are sent alongside the user id because three of the six
+    // capture surfaces (audience form, live session, catalogue) never learn an
+    // auth user id at submit time — their rows carry only the contact details
+    // the visitor typed. Matching on user id alone left those touches
+    // permanently invisible, which is precisely the lead-generation traffic
+    // this feature exists to measure.
+    if (!instituteId || (!userId && !email && !mobileNumber)) return [];
     try {
         const response = await authenticatedAxiosInstance.get<UtmAttributionRecord[]>(
-            `${GET_USER_UTM_ATTRIBUTION}/${encodeURIComponent(userId)}`,
-            { params: { instituteId } }
+            `${GET_USER_UTM_ATTRIBUTION}/${encodeURIComponent(userId || 'unknown')}`,
+            {
+                params: {
+                    instituteId,
+                    email: email || undefined,
+                    mobileNumber: mobileNumber || undefined,
+                },
+            }
         );
         return Array.isArray(response.data) ? response.data : [];
     } catch {

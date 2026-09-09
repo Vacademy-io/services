@@ -9,6 +9,10 @@ import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmAttributio
 import vacademy.io.admin_core_service.features.utm_attribution.dto.UtmCampaignSummaryResponse;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ForbiddenException;
+
+import java.util.Locale;
+import java.util.Set;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -44,9 +48,49 @@ public class UtmAttributionController {
     public ResponseEntity<List<UtmAttributionResponse>> forUser(
             @AuthenticationPrincipal CustomUserDetails user,
             @PathVariable String userId,
-            @RequestParam String instituteId) {
+            @RequestParam String instituteId,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String mobileNumber) {
+        requireStaffAccess(user, instituteId);
+        return ResponseEntity.ok(service.findForUser(instituteId, userId, email, mobileNumber));
+    }
+
+    /**
+     * Roles that identify a LEARNER-side caller rather than a member of staff.
+     */
+    private static final Set<String> LEARNER_ROLES = Set.of("STUDENT", "PARENT", "GUARDIAN");
+
+    /**
+     * Institute membership, minus the learners themselves.
+     *
+     * NOT {@code requireAdminAccess}: acquisition data is exactly what a
+     * COUNSELLOR needs, and they are the primary audience for the learner
+     * side-view this feeds. Demanding the ADMIN authority would have hidden the
+     * card from counsellors and teachers while the Lead Profile card sitting
+     * directly beside it — served by AudienceController, which validates
+     * nothing at all — kept working, which is an inconsistency an admin would
+     * read as a bug.
+     *
+     * NOT bare {@code validateUserAccess} either: a learner holds a real role in
+     * the institute, so membership alone would let any student read their own,
+     * and any classmate's, acquisition history.
+     */
+    private void requireStaffAccess(CustomUserDetails user, String instituteId) {
         accessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(service.findForUser(instituteId, userId));
+        if (isLearnerOnly(user)) {
+            throw new ForbiddenException("Access denied: staff role required");
+        }
+    }
+
+    /** True only when EVERY role the caller holds is a learner-side one. */
+    private boolean isLearnerOnly(CustomUserDetails user) {
+        if (user == null || user.isRootUser()) return false;
+        var authorities = user.getAuthorities();
+        if (authorities == null || authorities.isEmpty()) return false;
+        return authorities.stream()
+                .map(a -> a.getAuthority())
+                .filter(a -> a != null)
+                .allMatch(a -> LEARNER_ROLES.contains(a.toUpperCase(Locale.ROOT)));
     }
 
     /** Campaign roll-up over the last {@code days} days. */
@@ -55,7 +99,7 @@ public class UtmAttributionController {
             @AuthenticationPrincipal CustomUserDetails user,
             @RequestParam String instituteId,
             @RequestParam(defaultValue = "30") int days) {
-        accessValidator.validateUserAccess(user, instituteId);
+        requireStaffAccess(user, instituteId);
         int window = Math.max(1, Math.min(days, 365));
         Instant to = Instant.now();
         Instant from = to.minus(window, ChronoUnit.DAYS);

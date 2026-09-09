@@ -339,6 +339,8 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             <StudentAttribution
                 userId={selectedStudent?.user_id}
                 instituteId={instituteDetails?.id}
+                email={selectedStudent?.email}
+                mobileNumber={selectedStudent?.mobile_number}
             />
 
             {/* Terms & Conditions — always shown so admins can see signing status

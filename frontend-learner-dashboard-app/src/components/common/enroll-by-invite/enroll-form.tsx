@@ -888,9 +888,15 @@ const EnrollByInvite = ({
         // is leave for the gateway, so a report fired later would be lost on
         // every abandoned cart — exactly the population a campaign report has
         // to be able to see.
+        // Contact details ride along so a missing user_id degrades to a
+        // contact-matched row rather than dropping the touch: the server
+        // refuses a touch it cannot attach to anyone.
+        const paidDetails = getUserDetails();
         trackUtmAttribution({
           instituteId,
           userId: response?.user_id,
+          email: paidDetails.email || undefined,
+          mobileNumber: paidDetails.contact || undefined,
           sourceType: "ENROLL_INVITE",
           sourceId: inviteData?.id,
         });
@@ -1528,10 +1534,18 @@ const EnrollByInvite = ({
         // A FREE enrolment skips the abandoned-cart submit above, so this is
         // the only place its campaign touch can be recorded. Before the
         // redirect branch — a configured redirectPath leaves the page.
+        // Identity via getUserDetails(), NOT form.getValues().email: this form
+        // is custom-field driven, so its values are {value: ...} objects keyed
+        // by whatever the institute named the field. Reading `.email` off it
+        // yielded an object (or undefined), which the server rejected — so the
+        // FREE path recorded nothing at all.
+        const freeUser = paymentResponse?.user;
+        const freeDetails = getUserDetails();
         trackUtmAttribution({
           instituteId,
-          userId: submittedUserId || undefined,
-          email: form.getValues()?.email as string | undefined,
+          userId: freeUser?.id || submittedUserId || undefined,
+          email: freeUser?.email || freeDetails.email || undefined,
+          mobileNumber: freeDetails.contact || undefined,
           sourceType: "ENROLL_INVITE",
           sourceId: inviteData?.id,
         });

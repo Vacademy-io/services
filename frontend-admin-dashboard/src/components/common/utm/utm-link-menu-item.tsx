@@ -31,7 +31,17 @@ export function UtmLinkMenuItem({ onSelect, hidden, className }: UtmLinkMenuItem
     if (!enabled || hidden) return null;
 
     return (
-        <DropdownMenuItem className={className ?? 'cursor-pointer'} onClick={onSelect}>
+        // stopPropagation, because several of the six surfaces render this menu
+        // inside a CLICKABLE CARD (the assessment row navigates to the detail
+        // page on click). Without it the click bubbles to the card, the route
+        // changes, and the dialog unmounts before the admin ever sees it.
+        <DropdownMenuItem
+            className={className ?? 'cursor-pointer'}
+            onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+            }}
+        >
             <LinkSimple className="mr-2 size-4" />
             {t('menuItem')}
         </DropdownMenuItem>
