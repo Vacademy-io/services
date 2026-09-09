@@ -25,7 +25,7 @@ import {
     ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
 } from '@/components/design-system/utils/constants/table-layout';
 import { Route } from '..';
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getInstituteId } from '@/constants/helper';
@@ -72,7 +72,11 @@ import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
 import { useNavigate } from '@tanstack/react-router';
-import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
+import {
+    getAssessmentSettings,
+    getAssessmentSettingsFromCache,
+} from '@/services/assessment-settings';
+import { DEFAULT_ASSESSMENT_SETTINGS } from '@/types/assessment-settings';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -181,7 +185,18 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { BatchesFilterData } = useFilterDataForAssesment(initData);
     const instituteId = getInstituteId();
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
-    const assessmentSettings = getAssessmentSettingsFromCache();
+    // Offline Entry is gated on an institute-level setting. Fetch it rather than
+    // reading the localStorage cache directly: that cache is only ever written by
+    // Settings -> Assessment, so an admin who has never opened that page — or is on a
+    // second browser, or whose 24h cache lapsed — would silently fall back to the
+    // `enabled: false` default and lose the button while a colleague still sees it.
+    // The cached value is the placeholder so the button still paints instantly.
+    const { data: assessmentSettings = DEFAULT_ASSESSMENT_SETTINGS } = useQuery({
+        queryKey: ['ASSESSMENT_SETTINGS', instituteId],
+        queryFn: () => getAssessmentSettings(),
+        placeholderData: getAssessmentSettingsFromCache,
+        staleTime: 5 * 60 * 1000,
+    });
     const isOfflineEntryEnabled = assessmentSettings.offlineEntry.enabled;
     const queryClient = useQueryClient();
     // MANUAL evaluation assessments get an extra "Submission" column showing
