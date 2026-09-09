@@ -244,4 +244,11 @@ export const flavorConfig: FlavorConfigs = {
     domain: "soullifee.com",
     subdomain: "learner",
   },
+
+  // Agilore Global iOS app
+  "io.agilore.app": {
+    appName: "Agilore Global",
+    domain: "agilore.com",
+    subdomain: "learner",
+  },
 };
