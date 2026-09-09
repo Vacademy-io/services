@@ -149,7 +149,10 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                 {dayGroups.map((group) => (
                     <div key={group.key || 'undated'} className="space-y-2">
                         {group.label && (
-                            <div className="sticky top-0 z-10 flex justify-center py-1">
+                            // Deliberately in flow rather than sticky: a floating pill sits on top
+                            // of whatever scrolls under it, and it was covering the middle of a
+                            // message — including the join link in a reminder.
+                            <div className="flex justify-center py-1">
                                 <span className="rounded-full bg-white/90 px-3 py-0.5 text-caption font-medium uppercase tracking-wide text-gray-500 shadow-sm">
                                     {group.label}
                                 </span>
