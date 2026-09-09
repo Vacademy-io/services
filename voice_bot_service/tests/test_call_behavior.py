@@ -2816,3 +2816,15 @@ async def test_a_hello_mid_pitch_still_gets_the_carry_on_cue():
     tc = await _collector_with_resay(rec, resay)
     await _feed(tc, "Hello.")
     assert any("carry on" in c for c in _cue_texts(rec)), _cue_texts(rec)
+
+
+def test_watchdog_speaks_the_bridge_line_on_llm_bridge():
+    """The decision is pure (test_timeline); this pins the I/O side: run_bot
+    wires the configured threshold in and speaks bridge_line, off-context."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert "llm_bridge_after_secs=(settings.llm_bridge_after_secs" in src
+    handler = src[src.index("if d.kind == LLM_BRIDGE:"):]
+    handler = handler[:handler.index("continue")]
+    assert "TTSSpeakFrame(bridge_line, append_to_context=False)" in handler
+    assert 'diag.bump("llm_bridges")' in handler

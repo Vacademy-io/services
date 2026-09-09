@@ -354,6 +354,14 @@ class Settings:
     filler_voice_live_secs: float = field(
         default_factory=lambda: float(_env("FILLER_VOICE_LIVE_SECS", "0.4"))
     )
+    # Latency bridge: a reply has been composing this long with NO audio on the
+    # line → say "Just a second." once (watchdog LLM_BRIDGE). Unlike the
+    # probabilistic filler above this is deterministic and fires only when we
+    # are already late. Call c130e39f (2026-09-09): Vertex 5.4s to first token,
+    # then ~8s to finish a 3-sentence reply — 16s of dead air. 0 disables.
+    llm_bridge_after_secs: float = field(
+        default_factory=lambda: float(_env("LLM_BRIDGE_AFTER_SECS", "2.0"))
+    )
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
             p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()

@@ -81,6 +81,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
+                        LLM_BRIDGE,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from . import diagnostics as diag_mod
@@ -2737,6 +2738,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
     eng_fillers = ("Hmm…",)
+    # Spoken by the watchdog when a reply has been composing with no audio for
+    # LLM_BRIDGE_AFTER_SECS. Not "Hmm" (founder: "too much Hmm-ing") — a plain
+    # human "hang on" that a slow model earns, never a thinking sound.
+    bridge_line = "Just a second." if eng else "एक सेकंड।"
 
     stt_bias = (agent.get("name") or "").strip() or None
     stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
@@ -2792,7 +2797,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         _opening_for_cache = ""
     _fixed_lines = {
         _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
-        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING,
+        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING, bridge_line,
     }
     _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
     _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
@@ -3337,6 +3342,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             max_deaf_streak=settings.max_deaf_streak,
             duck_no_words_resume_secs=settings.duck_no_words_resume_secs,
             duck_max_hold_secs=settings.duck_max_hold_secs,
+            llm_bridge_after_secs=(settings.llm_bridge_after_secs
+                                   if settings.llm_bridge_after_secs > 0 else _OFF),
         )
         while True:
             await asyncio.sleep(1.0)
@@ -3378,6 +3385,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
+                continue
+            if d.kind == LLM_BRIDGE:
+                # Call c130e39f: 16s of silence while Vertex took 5.4s to the
+                # first token and ~8s more to finish the reply. The caller said
+                # "Hello?" three times into it. append_to_context=False: this is
+                # cover for the line, not part of the conversation.
+                diag.bump("llm_bridges")
+                logger.info("llm bridge: reply composing %.1fs with no audio — saying %r "
+                            "corr=%s", d.detail, bridge_line, corr)
+                await task.queue_frames([TTSSpeakFrame(bridge_line, append_to_context=False)])
                 continue
             # Retired branches (idle/orphan/stall/deaf) are disabled by config;
             # reaching one means the sentinel values above were changed — say so.
