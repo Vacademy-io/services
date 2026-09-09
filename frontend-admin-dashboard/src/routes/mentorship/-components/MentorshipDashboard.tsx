@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     ArrowRight,
     CalendarBlank,
@@ -31,6 +33,7 @@ import { MentorAvatar } from './MentorAvatar';
  * screen is computed from one of those two; nothing here is decorative filler.
  */
 export function MentorshipDashboard({ instituteId }: { instituteId: string | undefined }) {
+    const { t } = useTranslation('mentorshipDashboard');
     const { data, isLoading, isError, refetch } = useMentorDashboard(instituteId);
     const upcoming = useMentorSessions(instituteId, { lifecycle: 'UPCOMING' });
 
@@ -39,7 +42,7 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
             <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
                 <div className="flex items-center gap-2">
                     <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                    <p className="text-body text-danger-600">Couldn&apos;t load mentorship data.</p>
+                    <p className="text-body text-danger-600">{t('loadError')}</p>
                 </div>
                 <MyButton
                     type="button"
@@ -47,7 +50,7 @@ export function MentorshipDashboard({ instituteId }: { instituteId: string | und
                     scale="small"
                     onClick={() => refetch()}
                 >
-                    Retry
+                    {t('retry')}
                 </MyButton>
             </div>
         );
@@ -473,6 +476,7 @@ function AttentionCard({
 }
 
 function UpcomingCard({ sessions, loading }: { sessions: MentorSessionDTO[]; loading: boolean }) {
+    const { t, i18n } = useTranslation('mentorshipFormatSessionTimeUtils');
     return (
         <Card className="flex flex-col gap-3 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-2">
@@ -511,7 +515,7 @@ function UpcomingCard({ sessions, loading }: { sessions: MentorSessionDTO[]; loa
                                     {dayOfMonth(s.scheduled_start_utc)}
                                 </span>
                                 <span className="text-caption font-medium leading-none tracking-wide text-neutral-400">
-                                    {shortMonth(s.scheduled_start_utc)}
+                                    {shortMonth(s.scheduled_start_utc, i18n.language)}
                                 </span>
                             </span>
                             <span className="flex min-w-0 flex-1 flex-col">
@@ -519,8 +523,8 @@ function UpcomingCard({ sessions, loading }: { sessions: MentorSessionDTO[]; loa
                                     {s.mentor_name || 'Mentor'} &rarr; {s.student_name || 'Learner'}
                                 </span>
                                 <span className="text-caption text-neutral-400">
-                                    {relativeDay(s.scheduled_start_utc)} ·{' '}
-                                    {timeOfDay(s.scheduled_start_utc)}
+                                    {relativeDay(s.scheduled_start_utc, t, i18n.language)} ·{' '}
+                                    {timeOfDay(s.scheduled_start_utc, i18n.language)}
                                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ''}
                                 </span>
                             </span>

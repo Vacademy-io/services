@@ -100,3 +100,11 @@
     .tutor-board-preview img, .tutor-board-preview svg { max-width: 100%; height: auto; }
     .tutor-board-preview table { display: block; max-width: 100%; overflow-x: auto; }
 }
+
+/* A formula never escapes its card: KaTeX output scrolls sideways rather than
+   overlapping the next column, and un-typeset raw LaTeX (KaTeX failed, or the
+   HTML is shown before typesetting) wraps instead of bleeding. */
+.tutor-board-preview .tb-formula { max-width: 100%; overflow-x: auto; }
+.tutor-board-preview .tb-latex { display: block; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
+.tutor-board-preview .tb-latex .katex, .tutor-board-preview .tb-latex .katex-display { overflow-wrap: normal; word-break: normal; }
+.tutor-board-preview .tb-table { display: block; max-width: 100%; overflow-x: auto; }
