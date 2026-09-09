@@ -105,3 +105,31 @@ export const resolveLearnerIdentity = (values: FieldValue[]): LearnerIdentity =>
     phone: pick(values, PHONE_KEYS, looksLikePhone),
     name: pick(values, NAME_KEYS, looksLikeName),
 });
+
+/**
+ * Adapts a form's `{ fieldKey: { value } }` record into candidates.
+ *
+ * Every capture surface holds its answers in this shape but resolves the
+ * learner's email by its own ad-hoc rule — one asks "does the key contain
+ * 'email'?", another wants the label to equal "email" exactly. Both silently
+ * yield nothing on an institute that names the field anything else, and an
+ * attribution touch with no identity is dropped by the server, so that
+ * institute's campaign reporting is empty with no error to explain it.
+ *
+ * The field key doubles as the label so a key like `email_address` is still
+ * caught by the label rules when it is not an exact platform key.
+ */
+export const identityFromFormValues = (
+    values: Record<string, unknown> | null | undefined
+): LearnerIdentity =>
+    resolveLearnerIdentity(
+        Object.entries(values ?? {}).map(([key, field]) => {
+            const f = field as { value?: unknown; name?: string; type?: string } | undefined;
+            return {
+                key,
+                name: f?.name ?? key,
+                type: f?.type ?? '',
+                value: f?.value == null ? '' : String(f.value),
+            };
+        })
+    );
