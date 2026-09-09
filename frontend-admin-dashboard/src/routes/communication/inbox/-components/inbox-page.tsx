@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { getInstituteId } from '@/constants/helper';
 import { useInboxStore } from '../-stores/inbox-store';
 import { getConversations, getMessages, searchConversations } from '../-services/inbox-api';
@@ -11,6 +12,8 @@ const POLL_INTERVAL = 20000; // 20 seconds
 
 export function InboxPage() {
     const instituteId = getInstituteId() || '';
+    const { phone: phoneInUrl } = useSearch({ from: '/communication/inbox/' });
+    const navigate = useNavigate({ from: '/communication/inbox/' });
     const {
         selectedPhone,
         searchQuery,
@@ -30,6 +33,28 @@ export function InboxPage() {
     } = useInboxStore();
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // The open conversation and ?phone= are kept in step in both directions, each guarded by an
+    // equality check so they settle instead of bouncing off each other. URL -> store covers the
+    // first paint after a refresh, a pasted link and the browser's back button; store -> URL covers
+    // clicking a row. Replacing rather than pushing keeps a long browsing session from burying the
+    // page the admin arrived from under fifty chat entries.
+    const selectedFromUrl = phoneInUrl ?? null;
+
+    useEffect(() => {
+        if (selectedFromUrl !== useInboxStore.getState().selectedPhone) {
+            useInboxStore.getState().selectPhone(selectedFromUrl);
+        }
+    }, [selectedFromUrl]);
+
+    useEffect(() => {
+        if ((selectedPhone ?? null) !== selectedFromUrl) {
+            navigate({
+                search: selectedPhone ? { phone: selectedPhone } : {},
+                replace: true,
+            });
+        }
+    }, [selectedPhone, selectedFromUrl, navigate]);
 
     const loadConversations = useCallback(async (reset = false) => {
         setIsLoadingConversations(true);
