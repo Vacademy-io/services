@@ -4,7 +4,10 @@ import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { CallPickerPopover } from '@/components/shared/leads/call-picker-popover';
 import { usePlaceCall } from '@/components/shared/leads/use-place-call';
-import { fetchCallOptions } from '@/components/shared/leads/services/call-options';
+import {
+    fetchCallAvailability,
+    type CallAvailability,
+} from '@/components/shared/leads/services/call-options';
 
 /**
  * Click-to-call button for a person who is NOT (necessarily) a CRM lead —
@@ -38,21 +41,22 @@ interface ContactCallButtonProps {
 }
 
 /**
- * Is calling usable for this institute right now? The options endpoint is the
- * honest signal — it 4xx's unless a provider is configured AND enabled, which is
- * exactly the condition under which a Call button would work. Cached per
- * institute so the many rows/panels that mount this share one request, and a
- * failure simply hides the button rather than showing one that always errors.
+ * Two separate questions, two separate answers — see CallAvailabilityDTO.
+ *
+ * Cached per institute (not per row) so the many places that mount this button
+ * share one request. On failure we say "not enabled", which hides the button:
+ * if we cannot even ask, offering a call that would throw is worse than showing
+ * nothing.
  */
-function useTelephonyEnabled(instituteId: string): boolean {
+function useCallAvailability(instituteId: string): CallAvailability {
     const query = useQuery({
-        queryKey: ['telephony-enabled', instituteId],
-        queryFn: () => fetchCallOptions(instituteId),
+        queryKey: ['telephony-availability', instituteId],
+        queryFn: () => fetchCallAvailability(instituteId),
         enabled: !!instituteId,
-        staleTime: 10 * 60 * 1000,
+        staleTime: 5 * 60 * 1000,
         retry: false,
     });
-    return query.isSuccess;
+    return query.data ?? { enabled: false, callerReady: false };
 }
 
 export function ContactCallButton({
@@ -63,19 +67,30 @@ export function ContactCallButton({
     className,
 }: ContactCallButtonProps) {
     const instituteId = getCurrentInstituteId() ?? '';
-    const telephonyEnabled = useTelephonyEnabled(instituteId);
+    const availability = useCallAvailability(instituteId);
     const placeCall = usePlaceCall();
 
     const hasPhone = !!phone && phone.trim() !== '' && phone.trim() !== '-';
-    if (!telephonyEnabled || (!userId && !responseId) || !hasPhone) return null;
 
-    const disabled = placeCall.isPending;
+    // Institute-level off → render nothing. Whoever is looking at this learner
+    // cannot turn calling on from here, so a permanently dead button would just
+    // be clutter that reads like a bug.
+    if (!availability.enabled || (!userId && !responseId) || !hasPhone) return null;
+
+    // Caller-level not set up → keep the button but disable it and say why. This
+    // is the admin-without-an-extension case, and it IS actionable ("ask an admin
+    // to add one"), so hiding it would leave them with no idea calling exists.
+    const notReady = !availability.callerReady;
+    const disabled = notReady || placeCall.isPending;
+    const reason = notReady
+        ? availability.reason ?? 'Your account is not set up to place calls yet'
+        : undefined;
 
     return (
         <CallPickerPopover
             leadUserId={userId}
             disabled={disabled}
-            disabledReason={disabled ? 'A call is already being placed' : undefined}
+            disabledReason={reason ?? (disabled ? 'A call is already being placed' : undefined)}
             onConfirm={(preferredNumberId) =>
                 placeCall.mutate({
                     responseId: responseId ?? undefined,
@@ -89,7 +104,7 @@ export function ContactCallButton({
                     type="button"
                     onClick={(e) => e.stopPropagation()}
                     disabled={disabled}
-                    title="Call"
+                    title={reason ?? 'Call'}
                     aria-label="Call"
                     className={cn(
                         'inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors',
