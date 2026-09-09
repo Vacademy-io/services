@@ -325,7 +325,13 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             int minAgeDays = readIntParam(params.get("minAgeDays"), 1);
             int maxAgeDays = readIntParam(params.get("maxAgeDays"), 3);
 
-            List<Object[]> rows = ssigmRepo.findAbandonedCartPlans(instituteId, minAgeDays, maxAgeDays);
+            // Default to both so existing workflows keep their audience; a caller that wants
+            // only abandoned carts or only failed payments passes the one it means.
+            List<String> statuses = params.get("statuses") instanceof List
+                    ? ((List<?>) params.get("statuses")).stream().map(String::valueOf).toList()
+                    : List.of("PENDING_FOR_PAYMENT", "PAYMENT_FAILED");
+
+            List<Object[]> rows = ssigmRepo.findAbandonedCartPlans(instituteId, statuses, minAgeDays, maxAgeDays);
             List<Map<String, Object>> abandonedList = new ArrayList<>();
             for (Object[] row : rows) {
                 Map<String, Object> item = new HashMap<>();
