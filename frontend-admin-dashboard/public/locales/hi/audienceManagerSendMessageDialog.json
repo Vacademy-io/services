@@ -123,10 +123,14 @@
         "statusValues": {
             "success": "सफल",
             "failed": "विफल"
-        }
+        },
+        "recipientsSelected_one": "{{count}} चयनित लीड",
+        "recipientsSelected_other": "{{count}} चयनित लीड्स"
     },
     "footer": {
         "back": "पीछे",
         "next": "आगे"
-    }
+    },
+    "dialogDescriptionSelected_one": "चयनित {{count}} लीड को संदेश भेजें",
+    "dialogDescriptionSelected_other": "चयनित {{count}} लीड्स को संदेश भेजें"
 }

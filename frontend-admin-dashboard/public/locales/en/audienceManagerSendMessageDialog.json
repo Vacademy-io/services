@@ -123,10 +123,14 @@
         "statusValues": {
             "success": "Success",
             "failed": "Failed"
-        }
+        },
+        "recipientsSelected_one": "{{count}} selected lead",
+        "recipientsSelected_other": "{{count}} selected leads"
     },
     "footer": {
         "back": "Back",
         "next": "Next"
-    }
+    },
+    "dialogDescriptionSelected_one": "Send a message to the {{count}} selected lead",
+    "dialogDescriptionSelected_other": "Send a message to the {{count}} selected leads"
 }

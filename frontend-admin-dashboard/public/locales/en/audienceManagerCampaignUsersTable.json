@@ -79,7 +79,8 @@
         "bulkActions": "Bulk actions",
         "assignLeads": "Assign leads",
         "unassignLeads": "Unassign leads",
-        "deleteLeads": "Delete leads"
+        "deleteLeads": "Delete leads",
+        "sendMessage": "Send message"
     },
     "emptyState": {
         "errorTitle": "Couldn't load respondents",

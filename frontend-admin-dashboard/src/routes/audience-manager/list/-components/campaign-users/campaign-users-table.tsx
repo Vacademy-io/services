@@ -578,6 +578,8 @@ const CampaignUsersContent = ({
     >(
         new Map()
     );
+    // Response ids of the ticked rows — what "Send message" targets when a selection exists.
+    const selectedResponseIds = useMemo(() => Array.from(selectedLeads.keys()), [selectedLeads]);
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
@@ -1329,6 +1331,11 @@ const CampaignUsersContent = ({
                                 <MyDropdown
                                     dropdownList={[
                                         {
+                                            label: t('bulkToolbar.sendMessage'),
+                                            value: 'send-message',
+                                            icon: <PaperPlaneTilt className="size-4" />,
+                                        },
+                                        {
                                             label: t('bulkToolbar.assignLeads'),
                                             value: 'assign',
                                             icon: <UserPlus className="size-4" />,
@@ -1352,6 +1359,10 @@ const CampaignUsersContent = ({
                                             : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'send-message') {
+                                            setShowSendMessage(true);
+                                            return;
+                                        }
                                         if (value === 'delete') {
                                             setBulkDeleteOpen(true);
                                             return;
@@ -1483,6 +1494,7 @@ const CampaignUsersContent = ({
                 instituteId={instituteId || ''}
                 customFields={bulkImportCustomFields}
                 leadCount={totalElements}
+                selectedResponseIds={selectedResponseIds}
             />
             <ExportColumnPickerDialog
                 open={exportPickerOpen}
