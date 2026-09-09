@@ -75,9 +75,45 @@ _WORDS = {
 _FRACTION = re.compile(r"(?<![\d/.])(\d+)\s*/\s*(\d+)(?![\d/])")
 _RATIO3 = re.compile(r"\b(\d+(?:\s*:\s*\d+){2,})\b")
 _POW = re.compile(r"\^\s*\(?(-?\w+)\)?")
-# "2 + 3", "x² + 2x", "(k - 4)": an operator between operands — spaced, or
-# digit-adjacent — but never the hyphen inside "well-known".
-_NUM_OP_NUM = re.compile(r"(?<=[\d)])\s*([+\-−–])\s*(?=[\d(])|(?<=\S)\s+([+\-−–])\s+(?=\S)")
+# "2 + 3", "x² + 2x", "(k - 4)": an operator between two MATHS operands — a
+# number, a single letter (optionally with a power), a bracketed group or a
+# LaTeX command. "JEE Main 2026 - Maths Question" is a separator, not a
+# subtraction, and "well-known" keeps its hyphen.
+_OPERAND = r"(?:\d[\d.,]*|[A-Za-zα-ω](?:\^\w+|²|³)?|[)\]]|\\[a-zA-Z]+)"
+_OPERAND_R = r"(?:\d[\d.,]*|[A-Za-zα-ω](?:\^\w+|²|³)?\b|[(\[]|\\[a-zA-Z]+)"
+# Left operand, the operator, right operand — with any spacing. Applied until
+# nothing changes so "a - b - c" resolves both signs.
+_MATH_OP = re.compile(rf"(?<![A-Za-z\d])({_OPERAND})\s*([+\-−–])\s*(?={_OPERAND_R})")
+
+
+def _spell_operators(t: str, plus: str, minus: str) -> str:
+    for _ in range(6):
+        new = _MATH_OP.sub(lambda m: f"{m.group(1)}{plus if m.group(2) == '+' else minus}", t)
+        if new == t:
+            return t
+        t = new
+    return t
+
+
+# A spaced dash that is not an operator (a title separator, an aside) is a
+# pause for the voice, never the word "minus".
+_SEPARATOR_DASH = re.compile(r"\s+[-–—]\s+")
+# Acronyms are spelled letter by letter ("J E E") unless they are said as a
+# word; Roman numerals in class names are read as numbers.
+_SAY_AS_WORD = {"NEET", "NASA", "ISRO", "CAT", "GATE", "SAT", "AIIMS", "NIIT", "UNESCO", "UNICEF", "AIDS", "LASER", "RADAR", "SCUBA"}
+_ROMAN = {"I": "1", "II": "2", "III": "3", "IV": "4", "V": "5", "VI": "6", "VII": "7", "VIII": "8", "IX": "9", "X": "10", "XI": "11", "XII": "12"}
+_ACRONYM = re.compile(r"\b([A-Z]{2,6})(?![a-z])\b")
+
+
+def _spell_acronyms(t: str) -> str:
+    def one(m: "re.Match[str]") -> str:
+        a = m.group(1)
+        if a in _SAY_AS_WORD:
+            return a
+        if a in _ROMAN:
+            return _ROMAN[a]
+        return " ".join(a)
+    return _ACRONYM.sub(one, t)
 
 
 def spoken_form(text_: str, lang: str = "en") -> str:
@@ -91,10 +127,13 @@ def spoken_form(text_: str, lang: str = "en") -> str:
     t = _RATIO3.sub(lambda m: w["isto"].join(x.strip() for x in m.group(1).split(":")), t)
     t = _FRACTION.sub(lambda m: f"{m.group(1)}{w['by']}{m.group(2)}", t)
     t = t.replace("×", w["into"]).replace("÷", w["div"]).replace("≠", w["neq"]).replace("≥", w["ge"]).replace("≤", w["le"])
+    # Operators first, while operands still look like maths (x^2, x²).
+    t = _spell_operators(t, w["plus"], w["minus"])
     t = t.replace("²", w["sq"]).replace("³", w["cube"]).replace("√", w["root"]).replace("→", w["gives"])
     t = _POW.sub(lambda m: w["sq"] if m.group(1) == "2" else w["cube"] if m.group(1) == "3" else f"{w['pow']}{m.group(1)}", t)
-    t = _NUM_OP_NUM.sub(lambda m: w["plus"] if (m.group(1) or m.group(2)) == "+" else w["minus"], t)
+    t = _SEPARATOR_DASH.sub(", ", t)
     t = t.replace(">=", w["ge"]).replace("<=", w["le"])
     t = re.sub(r"(?<![=<>!])\s*=\s*(?!=)", w["eq"], t)
     t = re.sub(r"(?<=\d)\s*%", w["pct"], t)
+    t = _spell_acronyms(t)
     return re.sub(r"[ \t]{2,}", " ", t).strip()

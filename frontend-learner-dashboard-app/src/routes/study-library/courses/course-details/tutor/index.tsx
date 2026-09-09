@@ -426,7 +426,7 @@ function TutorPage() {
       // The question is shown ONCE: while it is open it lives in the check
       // card (with its options); it joins the transcript when the learner
       // answers, so the history still reads as a conversation.
-      if (meta.kind === "ask" || meta.kind === "revisit_ask") {
+      if (meta.kind === "ask" || meta.kind === "revisit_ask" || meta.kind === "predict") {
         pendingAskRef.current = { ...line, text };
         return;
       }

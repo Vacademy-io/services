@@ -203,3 +203,17 @@ def test_spoken_form_reads_maths_not_dates():
     assert spoken_form("a well-known rule") == "a well-known rule"                       # hyphenated words untouched
     assert spoken_form("12/09/2026") == "12/09/2026"                                    # dates untouched
     assert spoken_form("3/16", "hi") == "3 बटा 16"
+
+
+def test_spoken_form_reads_titles_and_acronyms_like_a_person():
+    from app.services.tutor.runtime.speech import spoken_form
+    # A title's spaced hyphen is a pause, not subtraction; JEE is spelled out.
+    assert spoken_form("Last time we were in JEE Main 2026 - Maths Question.") == "Last time we were in J E E Main 2026, Maths Question."
+    # Real subtraction still reads as minus.
+    assert spoken_form("D = (k - 4)(k + 1)") == "D equals (k minus 4)(k plus 1)"
+    assert spoken_form("x - 4 = 0") == "x minus 4 equals 0"
+    assert spoken_form("10 - 3 = 7") == "10 minus 3 equals 7"
+    # Acronyms said as words, roman numerals, hyphenated words.
+    assert spoken_form("NEET aspirants in Class XII - a well-known trap") == "NEET aspirants in Class 12, a well-known trap"
+    assert spoken_form("an MCQ from the CBSE board") == "an M C Q from the C B S E board"
+    assert spoken_form("HR training with SBI feedback", "hi") == "H R training with S B I feedback"
