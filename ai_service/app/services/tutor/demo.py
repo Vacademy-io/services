@@ -61,7 +61,10 @@ _ENSURE += [
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
+    "ALTER TABLE tutor_demo_topic ADD COLUMN IF NOT EXISTS style VARCHAR(16) NOT NULL DEFAULT 'lesson'",
 ]
+
+STYLES = ("lesson", "interview", "practice")
 
 DEMO_SLIDE_PREFIX = "demo:"
 
@@ -113,7 +116,7 @@ def config(db: Optional[Session] = None) -> Dict[str, Any]:
 
 # ── demo topics (own table; compiled into teaching_plan under slide id "demo:<key>") ──
 
-_TOPIC_COLS = ("key", "title", "emoji", "language", "sort_order", "source_text", "is_active", "updated_at")
+_TOPIC_COLS = ("key", "title", "emoji", "language", "sort_order", "source_text", "is_active", "updated_at", "style")
 
 
 def list_topics(db: Session, *, active_only: bool = False, with_source: bool = False) -> List[Dict[str, Any]]:
@@ -138,15 +141,15 @@ def list_topics(db: Session, *, active_only: bool = False, with_source: bool = F
 
 
 def upsert_topic(db: Session, *, key: str, title: str, source_text: str, emoji: Optional[str] = None,
-                 language: str = "en", sort_order: int = 100, is_active: bool = True) -> None:
+                 language: str = "en", sort_order: int = 100, is_active: bool = True, style: str = "lesson") -> None:
     db.execute(text("""
-        INSERT INTO tutor_demo_topic (key, title, emoji, language, sort_order, source_text, is_active, updated_at)
-        VALUES (:k, :t, :e, :l, :o, :s, :a, now())
+        INSERT INTO tutor_demo_topic (key, title, emoji, language, sort_order, source_text, is_active, style, updated_at)
+        VALUES (:k, :t, :e, :l, :o, :s, :a, :st, now())
         ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title, emoji = EXCLUDED.emoji, language = EXCLUDED.language,
             sort_order = EXCLUDED.sort_order, source_text = EXCLUDED.source_text, is_active = EXCLUDED.is_active,
-            updated_at = now()
+            style = EXCLUDED.style, updated_at = now()
     """), {"k": key[:64], "t": title[:160], "e": emoji, "l": language if language in ("en", "hi") else "en",
-           "o": int(sort_order), "s": source_text, "a": bool(is_active)})
+           "o": int(sort_order), "s": source_text, "a": bool(is_active), "st": style if style in STYLES else "lesson"})
     db.commit()
 
 
@@ -161,12 +164,13 @@ def load_demo_source(db: Session, slide_id: str):
     compiler can produce a plan for it."""
     from .slide_source import SlideSource, _hash
     key = slide_id[len(DEMO_SLIDE_PREFIX):]
-    r = db.execute(text("SELECT title, source_text, language FROM tutor_demo_topic WHERE key = :k"), {"k": key}).first()
+    r = db.execute(text("SELECT title, source_text, language, style FROM tutor_demo_topic WHERE key = :k"), {"k": key}).first()
     if not r:
         return None
+    style = r[3] if r[3] in STYLES else "lesson"
     return SlideSource(slide_id=slide_id, title=r[0], source_type="DEMO", source_id=key, kind="document",
-                       text=r[1] or "", course_name="Tutezy demo", chapter_name="Try a lesson",
-                       content_hash=_hash("demo", r[0], r[1] or "", r[2]))
+                       text=r[1] or "", course_name="Tutezy demo", chapter_name="Try a lesson", style=style,
+                       content_hash=_hash("demo", r[0], r[1] or "", r[2], style))
 
 
 def demo_title(db: Session, slide_id: str) -> Optional[str]:

@@ -65,9 +65,29 @@ def test_demo_source_and_topic_listing_imports_resolve(monkeypatch):
     class _DB:
         def execute(self, stmt, params=None):
             class R:
-                def first(_): return ("Photosynthesis", "Plants make sugar from light.", "en")
+                def first(_): return ("Photosynthesis", "Plants make sugar from light.", "en", "lesson")
                 def fetchall(_): return []
             return R()
     src = demo.load_demo_source(_DB(), "demo:photosynthesis")
-    assert src is not None and src.kind == "document" and src.slide_id == "demo:photosynthesis" and src.text
+    assert src is not None and src.kind == "document" and src.slide_id == "demo:photosynthesis" and src.text and src.style == "lesson"
     assert demo.list_topics(_DB()) == []
+
+
+def test_session_style_shapes_persona_and_greeting():
+    from app.services.tutor.runtime import prompts as rp
+    from app.services.tutor import compile_prompts as cp
+    assert rp.greet_key("interview") == "greet_interview" and rp.greet_key("lesson") == "greet" and rp.greet_key("x") == "greet"
+    g = rp.tpl("greet_interview", "en", name="Shreyash", teacher="Riya", slide="a mini aptitude interview")
+    assert "interviewer" in g and "teaching" not in g
+    assert "INTERVIEWER" in cp.system_prompt("Riya", "en", style="interview") and "interview" in rp.system_prompt("Riya", "en", "normal", "interview")
+    assert "one-to-one teacher" in cp.system_prompt("Riya", "en")
+    assert "ONE QUESTION, ASKED ONCE" in cp.rules_text()
+
+
+def test_narration_must_not_ask_when_a_check_follows():
+    from app.services.tutor.plan_validator import narration_asks
+    from app.services.tutor.runtime.prompts import narration_asks as live_asks
+    assert narration_asks("Try it before I reveal: what is the train's speed?")
+    assert narration_asks("Here is question one. Try it before I reveal.")
+    assert not narration_asks("Speed is distance over time. The train covers its own length.")
+    assert live_asks("So what happens to acceleration?") and not live_asks("Acceleration halves.")

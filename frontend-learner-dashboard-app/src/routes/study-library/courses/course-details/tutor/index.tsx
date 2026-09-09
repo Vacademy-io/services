@@ -120,6 +120,13 @@ function TutorPage() {
   // Phones: one pane at a time — the board, or the teacher's conversation.
   // A question or a nudge flips to the teacher so nothing is missed.
   const [phoneView, setPhoneView] = useState<"board" | "teacher">("board");
+  // The open question (spoken + shown in the card); appended to the transcript with the answer.
+  const pendingAskRef = useRef<TranscriptLine | null>(null);
+  const flushAsk = (answer: string) => {
+    const ask = pendingAskRef.current;
+    pendingAskRef.current = null;
+    setTranscript((prev) => [...prev, ...(ask ? [ask] : []), { role: "learner" as const, text: answer }]);
+  };
   // Desktop: the outline folds to a thin strip so the board and the teacher get the width.
   const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
     try {
@@ -416,6 +423,13 @@ function TutorPage() {
       turnTextRef.current.set(turn, text);
       if (turnTextRef.current.size > 20) turnTextRef.current.delete(turnTextRef.current.keys().next().value as number);
       const line: TranscriptLine = { role: "teacher", text: voiceMode && speakOn ? "" : text, kind: meta.kind, score: meta.score ?? null, cleared: meta.cleared, turn };
+      // The question is shown ONCE: while it is open it lives in the check
+      // card (with its options); it joins the transcript when the learner
+      // answers, so the history still reads as a conversation.
+      if (meta.kind === "ask" || meta.kind === "revisit_ask") {
+        pendingAskRef.current = { ...line, text };
+        return;
+      }
       // The bubble fills sentence by sentence as the audio plays (voice mode).
       setTranscript((prev) => [...prev, line]);
       if (!(voiceMode && speakOn)) setPhase("idle");
@@ -496,7 +510,7 @@ function TutorPage() {
       else applyPhase("idle");
     },
     onTranscriptFinal: (text) => {
-      if (text) setTranscript((prev) => [...prev, { role: "learner", text }]);
+      if (text) flushAsk(text);
       setPhase("thinking");
     },
     onSlideDone: async (ev) => {
@@ -986,7 +1000,7 @@ function TutorPage() {
             notice={notice}
             disabled={!!disconnected || phase === "connecting"}
             onSendText={(t) => {
-              setTranscript((prev) => [...prev, { role: "learner", text: t }]);
+              flushAsk(t);
               setPhase("thinking");
               setAwaiting(null);
               socket.sendAnswer(t);

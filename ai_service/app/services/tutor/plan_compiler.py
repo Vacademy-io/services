@@ -180,6 +180,14 @@ class PlanCompiler:
         except Exception:  # noqa: BLE001
             self.image_model = None
 
+    @staticmethod
+    def _limits(source):
+        """Interviews and practice drop the lesson-only engagement rules
+        (predict guesses, recap bullets, example callouts)."""
+        if getattr(source, "style", "lesson") in ("interview", "practice"):
+            return replace(DEFAULT_LIMITS, engagement_rules=False)
+        return DEFAULT_LIMITS
+
     # ── public ───────────────────────────────────────────────────────────
 
     async def compile_many(self, slide_ids: List[str]) -> AsyncIterator[Dict[str, Any]]:
@@ -340,6 +348,7 @@ class PlanCompiler:
                         "kb": self.kb_grounding.model_dump() if self.kb_grounding else None,
                         "teacher_name": self.teacher_name, "language": self.language,
                         "generate_images": self.generate_images, "kind": source.kind,
+                        "style": getattr(source, "style", "lesson"),
                         "compile_run_id": self.compile_run_id,
                         "source_description": description,
                         "text_kind": source.text_kind, "text_chars": len(source.text or ""),
@@ -478,7 +487,8 @@ class PlanCompiler:
                     raise RuntimeError(f"OCR failed ({str(exc)[:160]}); add what this PDF teaches instead") from exc
                 logger.warning("OCR failed for slide %s; compiling from the description: %s", source.slide_id, exc)
         kb_block = await self._kb_block(source)
-        system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images)
+        system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images,
+                                       style=getattr(source, "style", "lesson"))
         if source.kind in ("video", "pdf") and source.text and not (source.media_url or source.media_file_id):
             # An AI video (HTML animation, no file to embed): teach its
             # narration on the board like a document.
@@ -530,7 +540,7 @@ class PlanCompiler:
                 try:
                     candidate = TeachingPlanDraft.model_validate(data)
                     # Media urls are filled by the system after this loop.
-                    errors = validate_plan(candidate, self.language, limits=DEFAULT_LIMITS,
+                    errors = validate_plan(candidate, self.language, limits=self._limits(source),
                                            require_media_urls=False)
                     if not errors:
                         draft = candidate
@@ -547,7 +557,7 @@ class PlanCompiler:
                             continue
                         # Engagement and diagram quality: one round, never a
                         # failure — a plan that still misses them is kept.
-                        soft = soft_errors(candidate, limits=DEFAULT_LIMITS)
+                        soft = soft_errors(candidate, limits=self._limits(source))
                         if soft and not asked_for_quality:
                             asked_for_quality = True
                             logger.info("Tutor compile: %d quality ask(s) for slide %s: %s", len(soft), source.slide_id, "; ".join(soft[:3])[:400])
@@ -578,7 +588,7 @@ class PlanCompiler:
         # An image the system could not fill (images off, per-slide cap, a
         # generation error) is dropped, not fatal: the board keeps its text
         # and the plan is still delivered.
-        errors = validate_plan(draft, self.language, limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False),
+        errors = validate_plan(draft, self.language, limits=replace(self._limits(source), require_visual_per_topic=False),
                                require_media_urls=True)
         if errors:
             raise RuntimeError("plan invalid after media stage: " + "; ".join(errors[:6]))

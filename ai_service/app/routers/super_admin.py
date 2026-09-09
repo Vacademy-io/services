@@ -818,6 +818,8 @@ class DemoTopicUpsert(BaseModel):
     language: str = Field(default="en", pattern="^(en|hi)$")
     sort_order: int = 100
     is_active: bool = True
+    # lesson | interview | practice — the session register (persona, greeting, board shape).
+    style: str = Field(default="lesson", pattern="^(lesson|interview|practice)$")
     # Compile right away (background) after saving.
     compile: bool = True
 
@@ -860,7 +862,7 @@ def super_demo_topic_put(key: str, body: DemoTopicUpsert, background: Background
     if not key:
         raise HTTPException(status_code=422, detail="key must be letters, digits, - or _")
     demo.upsert_topic(db, key=key, title=body.title, source_text=body.source_text, emoji=body.emoji,
-                      language=body.language, sort_order=body.sort_order, is_active=body.is_active)
+                      language=body.language, sort_order=body.sort_order, is_active=body.is_active, style=body.style)
     c = demo.config(db)
     if body.compile and c["institute_id"]:
         background.add_task(_compile_demo_topic, key, c["institute_id"], current_user.user_id)

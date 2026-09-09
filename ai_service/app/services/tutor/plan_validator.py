@@ -184,6 +184,19 @@ def validate_plan(
 # (with broken diagrams replaced by an auto-layout), so quality asks never
 # turn into a failed compile.
 
+_TRAILING_Q = re.compile(r"[?？]\s*[\"'”’)]*\s*$")
+_REVEAL_CUES = re.compile(r"\b(before I reveal|try it first|what do you think|can you tell me|tell me)\b", re.IGNORECASE)
+
+
+def narration_asks(say: str) -> bool:
+    """Does the narration end by asking something? (Then the check prompt
+    would be a second, different question — the learner hears two.)"""
+    t = (say or "").strip()
+    if not t:
+        return False
+    return bool(_TRAILING_Q.search(t)) or bool(_REVEAL_CUES.search(t[-160:]))
+
+
 def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> List[str]:
     errors: List[str] = []
     if not plan.topics:
@@ -212,6 +225,8 @@ def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> 
             if concept.check.type != "none":
                 _needs(cloc, "check.prompt", concept.check.prompt or "", concept.check.prompt_i18n)
                 _needs(cloc, "check.hint", concept.check.hint or "", concept.check.hint_i18n)
+                if narration_asks(concept.say or ""):
+                    errors.append(f"{cloc}: `say` must not ask the question — it ends with '?' but the check prompt is the only question, spoken right after; end `say` with a statement")
             ops = ops_to_dicts(concept.board_ops)
             for op in iter_element_ops(ops):
                 if op.get("op") == "svg":

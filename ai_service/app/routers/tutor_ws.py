@@ -716,7 +716,14 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _send({"type": "check", "concept_id": c.id if c else None, "check_type": chk.get("type"),
                              "prompt": prompt_text, "options": chk.get("options") or [],
                              "remediation": step.pointer.remediations})
-                await _say(prompts.tpl("ask", lang, prompt=prompt_text), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
+                # The prompt is the ONE question. Plans compiled before the
+                # question-discipline rule sometimes end the narration on a
+                # question already; then the card carries the prompt and the
+                # voice does not ask a second, differently worded one.
+                if c and step.pointer.remediations == 0 and prompts.narration_asks(c.narration(lang)):
+                    await _send({"type": "beat", "ms": QUESTION_BEAT_MS})
+                else:
+                    await _say(prompts.tpl("ask", lang, prompt=prompt_text), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
                 await _await("answer")
             elif step.kind == "topic_summary":
                 await _emit_state(step.pointer.phase)
@@ -770,7 +777,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 greet = prompts.tpl("greet_returning", lang, name=display_name, slide=_slide_name(),
                                     previous=previous_slide["slide_title"], summary=summary)
             elif first and not opened_once:
-                greet = prompts.tpl("greet", lang, name=display_name, teacher=teacher, slide=_slide_name())
+                greet = prompts.tpl(prompts.greet_key(lesson.style), lang, name=display_name, teacher=teacher, slide=_slide_name())
             else:
                 greet = prompts.tpl("next_slide", lang, slide=_slide_name())
             opened_once = True

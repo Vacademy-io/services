@@ -305,6 +305,8 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
         # slides): the live tutor pulls passages from it on doubt turns.
         "kb": ((plan.raw_plan_json or {}).get("compile_inputs") or {}).get("kb")
         if isinstance(plan.raw_plan_json, dict) else None,
+        "style": (((plan.raw_plan_json or {}).get("compile_inputs") or {}).get("style") or "lesson")
+        if isinstance(plan.raw_plan_json, dict) else "lesson",
         "topics": [
             {
                 "id": t.id, "order": t.topic_order, "title": t.title,
