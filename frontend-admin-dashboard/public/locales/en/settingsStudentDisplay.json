@@ -138,6 +138,14 @@
         "generating": "Generating...",
         "downloadGuideButton": "Download guide (PDF)"
     },
+    "concentration": {
+        "cardTitle": "Focus Check",
+        "cardDescription": "A periodic prompt over video lessons asking {{learnerPlural}} to tap a highlighted number, used to measure the concentration score",
+        "enableFocusCheck": "Show focus check during videos",
+        "minMinutes": "Minimum gap (minutes)",
+        "maxMinutes": "Maximum gap (minutes)",
+        "frequencyHint": "Each check appears at a random point between these two gaps."
+    },
     "notifications": {
         "cardTitle": "Notifications",
         "cardDescription": "Student notifications preferences",

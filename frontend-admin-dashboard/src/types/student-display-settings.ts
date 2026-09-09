@@ -406,6 +406,26 @@ export interface StudentLiveClassesSettings {
     showClassMaterials: boolean;
 }
 
+// Periodic "Active Focus Check" shown over video slides in the learner app: the
+// learner must tap a highlighted number to keep watching. The learner app owns
+// the whole behaviour; the admin app only needs to round-trip the block so that
+// saving Student Display settings never drops an institute's opt-out.
+export interface StudentConcentrationSettings {
+    enabled: boolean;
+    frequency: {
+        min_minutes: number;
+        max_minutes: number;
+    };
+    behavior: {
+        allow_skip: boolean;
+        penalty_type: 'pause' | 'flag_only';
+    };
+    appearance: {
+        title: string;
+        subtitle: string;
+    };
+}
+
 // Root schema
 export interface StudentDisplaySettingsData {
     sidebar: {
@@ -431,5 +451,6 @@ export interface StudentDisplaySettingsData {
     };
     liveClasses: StudentLiveClassesSettings;
     tutorials: StudentTutorialSettings;
+    concentration: StudentConcentrationSettings;
     postLoginRedirectRoute: string;
 }
