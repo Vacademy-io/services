@@ -4,6 +4,7 @@ import {
     cleanUtmValues,
     getRecentUtmValues,
     normalizeUtmValue,
+    normalizeUtmValueLive,
     readUtmFromUrl,
     rememberUtmValues,
     stripUtmFromUrl,
@@ -86,6 +87,35 @@ describe('normalising values', () => {
 
     it('caps a pasted essay at a storable length', () => {
         expect(normalizeUtmValue('a'.repeat(500))).toHaveLength(120);
+    });
+});
+
+describe('typing a two-word campaign, character by character', () => {
+    // The bug this covers: the full normaliser trims, so the moment the space
+    // in "Black Friday" is typed the value is "black " -> trimmed to "black",
+    // and the next character lands flush against it. The admin silently gets
+    // "blackfriday" and cannot type the hyphen themselves.
+    const type = (text: string, normalise: (v: string) => string) => {
+        let state = '';
+        for (const ch of text) state = normalise(state + ch);
+        return state;
+    };
+
+    it('keeps the space long enough for it to become a hyphen', () => {
+        expect(type('Black Friday', normalizeUtmValueLive)).toBe('black-friday');
+    });
+
+    it('is what the OLD trimming normaliser got wrong', () => {
+        // Regression guard: this is the behaviour we moved away from.
+        expect(type('Black Friday', normalizeUtmValue)).toBe('blackfriday');
+    });
+
+    it('still trims once the value is finalised on blur', () => {
+        expect(normalizeUtmValue(normalizeUtmValueLive('  Diwali Sale  '))).toBe('diwali-sale');
+    });
+
+    it('pasting the whole value at once gives the same answer as typing it', () => {
+        expect(normalizeUtmValue('Black Friday')).toBe(type('Black Friday', normalizeUtmValueLive));
     });
 });
 

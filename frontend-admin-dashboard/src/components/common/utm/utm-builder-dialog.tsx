@@ -17,10 +17,12 @@ import {
 } from '@phosphor-icons/react';
 import {
     SUGGESTED_MEDIUMS,
+    UTM_KEYS,
     SUGGESTED_SOURCES,
     buildUtmUrl,
     getRecentUtmValues,
     normalizeUtmValue,
+    normalizeUtmValueLive,
     readUtmFromUrl,
     rememberUtmValues,
     stripUtmFromUrl,
@@ -139,7 +141,20 @@ export function UtmBuilderDialog({
         []
     );
 
-    const generatedUrl = useMemo(() => buildUtmUrl(cleanBase, values), [cleanBase, values]);
+    // Build from FULLY normalised values, not the live ones held in state.
+    // Otherwise the URL depends on blur having fired: an admin who types
+    // "diwali sale " and clicks Copy straight away — or presses Enter — would
+    // copy a trailing hyphen and get a second, near-identical row in their
+    // campaign report. Browsers do blur on mousedown, but relying on event
+    // ordering for data correctness is not worth it.
+    const generatedUrl = useMemo(() => {
+        const finalised: UtmValues = {};
+        for (const key of UTM_KEYS) {
+            const value = values[key];
+            if (value) finalised[key] = normalizeUtmValue(value);
+        }
+        return buildUtmUrl(cleanBase, finalised);
+    }, [cleanBase, values]);
 
     const missingRequired = !values.utm_source?.trim() || !values.utm_medium?.trim();
     const missingCampaign = settings.requireCampaign && !values.utm_campaign?.trim();
@@ -161,9 +176,15 @@ export function UtmBuilderDialog({
         );
     };
 
+    // While typing: no trim, so an interior space survives long enough to
+    // become a hyphen. On blur: the full normalisation, which also trims.
     const update = (key: UtmKey, raw: string) => {
-        setValues((prev) => ({ ...prev, [key]: normalizeUtmValue(raw) }));
+        setValues((prev) => ({ ...prev, [key]: normalizeUtmValueLive(raw) }));
         setCopied(false);
+    };
+
+    const finalise = (key: UtmKey) => {
+        setValues((prev) => ({ ...prev, [key]: normalizeUtmValue(prev[key] ?? '') }));
     };
 
     const handleCopy = async () => {
@@ -173,7 +194,9 @@ export function UtmBuilderDialog({
             toast.error(t('toast.copyFailed'));
             return;
         }
-        rememberUtmValues(values);
+        // Remember the finalised spelling, so the suggestion list cannot offer
+        // a half-typed variant back to the admin next time.
+        rememberUtmValues(readUtmFromUrl(generatedUrl));
         setCopied(true);
         toast.success(t('toast.copied'));
         if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
@@ -290,6 +313,7 @@ export function UtmBuilderDialog({
                                     inputPlaceholder={t(`fields.${key}.placeholder`)}
                                     input={values[key] ?? ''}
                                     onChangeFunction={(e) => update(key, e.target.value)}
+                                    onBlur={() => finalise(key)}
                                     list={options.length ? listId : undefined}
                                     // MyInput's size variants cap the field at
                                     // sm:w-60; `w-full` alone loses to that at

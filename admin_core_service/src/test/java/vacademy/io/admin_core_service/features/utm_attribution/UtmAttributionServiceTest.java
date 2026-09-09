@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 /**
@@ -38,7 +39,6 @@ class UtmAttributionServiceTest {
         service = new UtmAttributionService();
         ReflectionTestUtils.setField(service, "repository", repository);
         when(repository.save(any(UtmAttribution.class))).thenAnswer(i -> i.getArgument(0));
-        when(repository.findUnlinkedByContact(anyString(), any(), any())).thenReturn(List.of());
     }
 
     private UtmTrackRequest.UtmTrackRequestBuilder valid() {
@@ -111,11 +111,38 @@ class UtmAttributionServiceTest {
     /** A double-clicked submit is one touch, not two. */
     @Test
     void dropsADuplicateWithinTheDedupeWindow() {
-        when(repository.countRecentDuplicates(anyString(), any(), any(), anyString(), any(),
+        when(repository.countRecentDuplicates(anyString(), any(), any(), any(), anyString(), any(),
                 any(), any(), any(Timestamp.class))).thenReturn(1L);
 
         assertNull(service.record(valid().build()));
         verify(repository, never()).save(any());
+    }
+
+    /**
+     * A phone-identity institute sends no email at all. The dedupe query has to
+     * be given the mobile too, otherwise its identity predicate is false for
+     * every phone-only lead and they are never de-duplicated.
+     */
+    @Test
+    void passesTheMobileToTheDedupeCheckForPhoneOnlyLeads() {
+        service.record(valid().userId(null).email(null).mobileNumber("+911234567890").build());
+
+        verify(repository).countRecentDuplicates(eq("inst-1"), isNull(), isNull(),
+                eq("+911234567890"), eq("AUDIENCE"), any(), any(), any(), any(Timestamp.class));
+    }
+
+    /**
+     * The email handed to the query must already be lowercased: the JPQL applies
+     * LOWER() to the COLUMN only. Applying it to the parameter instead makes
+     * Hibernate bind an untyped null, which PostgreSQL resolves as
+     * lower(bytea) — a function that does not exist — and the statement dies.
+     */
+    @Test
+    void lowercasesTheEmailBeforeItReachesTheQuery() {
+        service.record(valid().userId(null).email("Learner@Example.COM").build());
+
+        verify(repository).countRecentDuplicates(eq("inst-1"), isNull(), eq("learner@example.com"),
+                any(), eq("AUDIENCE"), any(), any(), any(), any(Timestamp.class));
     }
 
     /**
@@ -144,17 +171,18 @@ class UtmAttributionServiceTest {
         assertEquals("learner@example.com", captor.getValue().getEmail());
     }
 
-    /** Rows written before the user id was known get claimed once it is. */
+    /**
+     * Recording a touch must never rewrite rows that already exist. The read
+     * side matches a learner on contact details instead, so there is nothing to
+     * back-fill — and an unauthenticated caller cannot re-point somebody else's
+     * attribution at a user id of its choosing.
+     */
     @Test
-    void attachesEarlierAnonymousRowsToTheResolvedUser() {
-        UtmAttribution pending = UtmAttribution.builder().id("row-1").build();
-        when(repository.findUnlinkedByContact("inst-1", "learner@example.com", null))
-                .thenReturn(List.of(pending));
-
+    void neverMutatesExistingRowsWhenRecording() {
         service.record(valid().email("learner@example.com").build());
 
-        assertEquals("user-1", pending.getUserId());
-        verify(repository).saveAll(List.of(pending));
+        verify(repository, never()).saveAll(any());
+        verify(repository).save(any(UtmAttribution.class));
     }
 
     /** The flat-map overload is what the product-page flow already holds. */
@@ -189,22 +217,65 @@ class UtmAttributionServiceTest {
 
     @Test
     void readsBackNothingWhenAskedWithoutIds() {
-        assertTrue(service.findForUser(null, "user-1").isEmpty());
-        assertTrue(service.findForUser("inst-1", "  ").isEmpty());
-        verify(repository, never()).findByInstituteIdAndUserIdOrderByCreatedAtAsc(any(), any());
+        assertTrue(service.findForUser(null, "user-1", null, null).isEmpty());
+        // No identity of any kind: answer empty rather than scan the institute.
+        assertTrue(service.findForUser("inst-1", "  ", null, "  ").isEmpty());
+        verify(repository, never()).findForLearner(any(), any(), any(), any());
     }
 
     @Test
     void readsEveryTouchForALearnerOldestFirst() {
         UtmAttribution row = UtmAttribution.builder()
                 .id("row-1").sourceType("AUDIENCE").utmSource("meta").build();
-        when(repository.findByInstituteIdAndUserIdOrderByCreatedAtAsc(eq("inst-1"), eq("user-1")))
+        when(repository.findForLearner(eq("inst-1"), eq("user-1"), any(), any()))
                 .thenReturn(List.of(row));
 
-        var result = service.findForUser("inst-1", "user-1");
+        var result = service.findForUser("inst-1", "user-1", null, null);
 
         assertEquals(1, result.size());
         assertEquals("meta", result.get(0).getUtmSource());
         assertEquals("AUDIENCE", result.get(0).getSourceType());
+    }
+
+    /**
+     * A bare country code is what an optional phone field saves in this product.
+     * Using it as a match key would join together every learner who skipped the
+     * field, handing each of them the others' acquisition history.
+     */
+    @Test
+    void refusesADegenerateMobileAsAMatchKey() {
+        when(repository.findForLearner(any(), any(), any(), any())).thenReturn(List.of());
+
+        service.findForUser("inst-1", null, null, "+91");
+
+        // Nothing matchable was supplied, so the query is never even issued.
+        verify(repository, never()).findForLearner(any(), any(), any(), any());
+    }
+
+    @Test
+    void acceptsARealMobileAsAMatchKey() {
+        when(repository.findForLearner(any(), any(), any(), any())).thenReturn(List.of());
+
+        service.findForUser("inst-1", null, null, "+91 98765 43210");
+
+        verify(repository).findForLearner(eq("inst-1"), isNull(), isNull(), eq("+91 98765 43210"));
+    }
+
+    /**
+     * The surfaces that matter most for campaigns — audience form, live session,
+     * catalogue — never learn a user id at submit time. The read has to match
+     * the person by contact details or those touches are invisible forever.
+     */
+    @Test
+    void findsTouchesForALearnerWhoNeverHadAUserId() {
+        UtmAttribution row = UtmAttribution.builder()
+                .id("row-1").sourceType("CATALOGUE").utmSource("instagram").build();
+        when(repository.findForLearner("inst-1", "user-1", "learner@example.com", "+911234567890"))
+                .thenReturn(List.of(row));
+
+        var result = service.findForUser("inst-1", "user-1", "Learner@Example.COM", "+911234567890");
+
+        assertEquals(1, result.size());
+        assertEquals("instagram", result.get(0).getUtmSource());
     }
 }

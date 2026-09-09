@@ -25,16 +25,21 @@ import { cn } from '@/lib/utils';
 export const StudentAttribution = ({
     userId,
     instituteId,
+    email,
+    mobileNumber,
 }: {
     userId: string | undefined;
     instituteId: string | undefined;
+    /** Sent so touches captured before this learner had a user id still match. */
+    email?: string;
+    mobileNumber?: string;
 }) => {
     const { t } = useTranslation('manageStudentsAttribution');
 
     const { data: touches = [] } = useQuery({
-        queryKey: utmAttributionQueryKey(userId ?? '', instituteId ?? ''),
-        queryFn: () => fetchUtmAttributionForUser(userId ?? '', instituteId ?? ''),
-        enabled: Boolean(userId && instituteId),
+        queryKey: utmAttributionQueryKey(userId ?? '', instituteId ?? '', email, mobileNumber),
+        queryFn: () => fetchUtmAttributionForUser(userId ?? '', instituteId ?? '', email, mobileNumber),
+        enabled: Boolean(instituteId && (userId || email || mobileNumber)),
         staleTime: 5 * 60 * 1000,
     });
 

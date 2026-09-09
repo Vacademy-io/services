@@ -73,16 +73,20 @@ describe("first-touch capture", () => {
 });
 
 describe("reporting a touch", () => {
+  // Loosely typed on purpose: vi.fn()'s inferred generic does not unify with
+  // the ambient `fetch` signature, and pinning it adds nothing to the assertions.
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     sessionStorage.clear();
     setUrl("");
-    fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response));
+    fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response)) as ReturnType<typeof vi.fn>;
     vi.stubGlobal("fetch", fetchMock);
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   const capture = () => {
     setUrl("?utm_source=meta&utm_campaign=diwali");

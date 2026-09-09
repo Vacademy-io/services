@@ -13,34 +13,51 @@ import java.util.List;
 public interface UtmAttributionRepository extends JpaRepository<UtmAttribution, String> {
 
     /**
-     * Every touch for one person, oldest first — first touch gets the credit and
-     * the learner side-view reads the tail for "most recent".
-     */
-    List<UtmAttribution> findByInstituteIdAndUserIdOrderByCreatedAtAsc(String instituteId, String userId);
-
-    /**
-     * Rows written before the user id was known, matched back on whatever
-     * contact detail the form did capture. Either argument may be null — the
-     * comparison is written so a null simply matches nothing rather than
-     * matching every row with a null column.
+     * Every touch for one person, oldest first.
+     *
+     * Matches on user_id OR the contact details, because three of the six
+     * capture surfaces (audience form, live session, catalogue) never learn an
+     * auth user id at submit time — they only have the email/mobile the visitor
+     * typed. Keying the read on user_id alone made those rows unreachable
+     * forever, which meant the learner side-view was permanently empty for
+     * exactly the lead-generation surfaces the feature exists to measure.
+     *
+     * The contact fallback deliberately applies ONLY to rows that have no
+     * user_id yet. A row already claimed by a user belongs to that user, and
+     * matching it by shared contact details would hand one learner another's
+     * history — families routinely register siblings on ONE parent mobile, so
+     * that is the normal case here, not an edge case.
+     *
+     * NOTE ON LOWER(): the function is applied to the COLUMN only, never to the
+     * bound parameter. Hibernate cannot infer a type for a null parameter that
+     * sits inside a function call, binds it as untyped, and PostgreSQL then
+     * resolves lower(untyped-null) to lower(bytea) — which does not exist, so
+     * the whole statement fails. Callers pass an already-lowercased email.
      */
     @Query("""
             SELECT u FROM UtmAttribution u
             WHERE u.instituteId = :instituteId
-              AND u.userId IS NULL
-              AND ((:email IS NOT NULL AND LOWER(u.email) = LOWER(:email))
-                   OR (:mobileNumber IS NOT NULL AND u.mobileNumber = :mobileNumber))
+              AND ((:userId IS NOT NULL AND u.userId = :userId)
+                   OR (u.userId IS NULL AND :email IS NOT NULL AND LOWER(u.email) = :email)
+                   OR (u.userId IS NULL AND :mobileNumber IS NOT NULL
+                       AND u.mobileNumber = :mobileNumber))
             ORDER BY u.createdAt ASC
             """)
-    List<UtmAttribution> findUnlinkedByContact(@Param("instituteId") String instituteId,
-                                               @Param("email") String email,
-                                               @Param("mobileNumber") String mobileNumber);
+    List<UtmAttribution> findForLearner(@Param("instituteId") String instituteId,
+                                        @Param("userId") String userId,
+                                        @Param("email") String email,
+                                        @Param("mobileNumber") String mobileNumber);
 
     /**
      * Guard against the same submission being recorded twice — a double-clicked
-     * form, or a retry after a network blip. Deliberately keyed on the campaign
-     * tuple rather than on time alone, so a genuine second touch from a
-     * DIFFERENT campaign is still recorded.
+     * form, or a retry after a network blip. Keyed on the campaign tuple rather
+     * than on time alone, so a genuine second touch from a DIFFERENT campaign is
+     * still recorded.
+     *
+     * The identity disjunction covers all three shapes a caller can have:
+     * a user id, an email, or (phone-identity institutes) a mobile number only.
+     * Omitting the mobile branch made the whole predicate false for phone-only
+     * leads, so they were never de-duplicated at all.
      */
     @Query("""
             SELECT COUNT(u) FROM UtmAttribution u
@@ -48,7 +65,9 @@ public interface UtmAttributionRepository extends JpaRepository<UtmAttribution, 
               AND u.sourceType = :sourceType
               AND u.createdAt > :since
               AND ((:userId IS NOT NULL AND u.userId = :userId)
-                   OR (:userId IS NULL AND :email IS NOT NULL AND LOWER(u.email) = LOWER(:email)))
+                   OR (:userId IS NULL AND :email IS NOT NULL AND LOWER(u.email) = :email)
+                   OR (:userId IS NULL AND :email IS NULL AND :mobileNumber IS NOT NULL
+                       AND u.mobileNumber = :mobileNumber))
               AND (:sourceId IS NULL OR u.sourceId = :sourceId)
               AND (:utmCampaign IS NULL OR u.utmCampaign = :utmCampaign)
               AND (:utmSource IS NULL OR u.utmSource = :utmSource)
@@ -56,6 +75,7 @@ public interface UtmAttributionRepository extends JpaRepository<UtmAttribution, 
     long countRecentDuplicates(@Param("instituteId") String instituteId,
                                @Param("userId") String userId,
                                @Param("email") String email,
+                               @Param("mobileNumber") String mobileNumber,
                                @Param("sourceType") String sourceType,
                                @Param("sourceId") String sourceId,
                                @Param("utmCampaign") String utmCampaign,
