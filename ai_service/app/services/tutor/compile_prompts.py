@@ -106,9 +106,14 @@ def rules_text(images_enabled: bool = True) -> str:
      another label; never rely on font width to line things up.
    - Give the parts a teacher would point at their own id= (listed in "parts"), and use "step" so a
      process, a flow or a build-up appears piece by piece as the narration reaches it.
-   Tables for comparisons, callouts for definitions and warnings.
+   Tables for comparisons, callouts for definitions and warnings. A worked derivation or a pure-algebra board
+   is visual through its `formula` ops and a comparison board through its `table` — those count as the board's
+   visual; never bolt a decorative diagram onto algebra just to have a picture.
    {IMAGES_ON_RULE if images_enabled else IMAGES_OFF_RULE}
-5. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
+5. WORD BUDGET: the limit on a concept's board counts the words of text, bullets, callouts and table cells —
+   formulas and diagram labels do not count. If a step needs more explanation than fits, say it out loud in the
+   narration instead of writing it on the board.
+6. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
    ("look at the arrow on the left"). Use {{student_name}} where the teacher would say the learner's name.
    Provide the same narration in the other language under say_i18n — and likewise every other SPOKEN line
    (check prompt, hint, predict, summary_say) under its *_i18n. A learner may switch language mid-lesson.
@@ -117,20 +122,20 @@ def rules_text(images_enabled: bool = True) -> str:
    sentence, never a pure-Sanskrit translation of a technical term. SPOKEN RHYTHM: one idea per sentence,
    under 18 words each; never read a list aloud (say "three things matter here" and name them in prose);
    put a question in its own final sentence.
-6. Ids: topics "t1","t2"...; concepts "t1c1","t1c2"...; elements "t1c1-b1" etc. All unique across the plan.
-7. concept_tags are stable, lowercase, dotted ("cell.nucleus"); the same idea gets the same tag everywhere.
-8. Write teach_notes for a human/AI teacher: the analogy to use, the order to reveal things, common traps.
-9. ENGAGEMENT (checked): every topic closes with a recap — summary_ops holds ONE bullet op of 3-5 one-line
+7. Ids: topics "t1","t2"...; concepts "t1c1","t1c2"...; elements "t1c1-b1" etc. All unique across the plan.
+8. concept_tags are stable, lowercase, dotted ("cell.nucleus"); the same idea gets the same tag everywhere.
+9. Write teach_notes for a human/AI teacher: the analogy to use, the order to reveal things, common traps.
+10. ENGAGEMENT (checked): every topic closes with a recap — summary_ops holds ONE bullet op of 3-5 one-line
    takeaways and summary_say is the 1-3 sentence spoken recap; every topic contains one callout of kind
    "example" (a worked or real-life example); the first concept of every topic after the first carries a
    `predict` question (a guess the learner makes before the board appears, e.g. "What do you think happens
    to control when you export?").
-10. CHECK MIX (checked): at least a third of all checks are QUICK — "mcq" with exactly 3 options (one right,
+11. CHECK MIX (checked): at least a third of all checks are QUICK — "mcq" with exactly 3 options (one right,
    two plausible) or "numeric"; open questions ask ONE thing in under 30 words and are for reasoning, not
    recall; every check carries a `hint` (a nudge, never the answer).
-11. Set "say_index" on every element op and "step" on diagram parts so the board writes itself in sync with
+12. Set "say_index" on every element op and "step" on diagram parts so the board writes itself in sync with
    the narration (rule in the ops reference).
-12. ONE QUESTION, ASKED ONCE (checked). When a concept has a check, `say` explains and then STOPS — it never
+13. ONE QUESTION, ASKED ONCE (checked). When a concept has a check, `say` explains and then STOPS — it never
    asks the check's question, never says "try it before I reveal", never ends with a question mark. The
    check's `prompt` is the only question and it is spoken aloud verbatim right after `say`, so write it as a
    complete, concrete, self-contained question with the actual numbers and names ("A train 150 m long

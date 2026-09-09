@@ -132,6 +132,8 @@ class _Run:
     # Uploaded video transcribed / scanned PDF OCR'd for this compile (billed inside source_text).
     transcription_minutes: int = 0
     ocr_pages: int = 0
+    # Board-quality asks the model did not satisfy; stored with the plan.
+    quality_notes: List[str] = field(default_factory=list)
 
 
 # Voice warm-ups outlive the compile that started them.
@@ -344,6 +346,7 @@ class PlanCompiler:
                     return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "plan row vanished"}
                 plan_store.store_draft(
                     db, plan, draft, model=run.model_used, raw=raw,
+                    quality_notes=run.quality_notes,
                     compile_inputs={
                         "kb": self.kb_grounding.model_dump() if self.kb_grounding else None,
                         "teacher_name": self.teacher_name, "language": self.language,
@@ -588,10 +591,16 @@ class PlanCompiler:
         # An image the system could not fill (images off, per-slide cap, a
         # generation error) is dropped, not fatal: the board keeps its text
         # and the plan is still delivered.
-        errors = validate_plan(draft, self.language, limits=replace(self._limits(source), require_visual_per_topic=False),
-                               require_media_urls=True)
+        errors = validate_plan(draft, self.language, limits=self._limits(source), require_media_urls=True)
         if errors:
             raise RuntimeError("plan invalid after media stage: " + "; ".join(errors[:6]))
+        # What the quality round did not manage (a derivation that will not fit
+        # the word budget, an abstract board with no diagram): kept with the
+        # plan and shown to the admin, never a failed compile.
+        run.quality_notes = soft_errors(draft, limits=self._limits(source))
+        if run.quality_notes:
+            logger.info("Tutor compile: slide %s kept with %d quality note(s): %s",
+                        source.slide_id, len(run.quality_notes), "; ".join(run.quality_notes[:3])[:400])
         return draft, raw
 
     async def _chat(self, messages: List[Dict[str, Any]], run: _Run) -> Tuple[str, Optional[str]]:

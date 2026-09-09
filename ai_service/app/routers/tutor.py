@@ -277,6 +277,7 @@ def package_plans(
                 topics=c["topics"], concepts=c["concepts"],
                 updated_at=plan.updated_at.isoformat() if plan.updated_at else None,
                 source_kind=kinds.get(s["slide_id"]), text_kind=inputs.get("text_kind"),
+                quality_notes=plan_store.quality_notes_of(plan),
             )
         counts[item.status] = counts.get(item.status, 0) + 1
         items.append(item)

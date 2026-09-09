@@ -263,8 +263,11 @@ def test_post_media_validation_tolerates_a_dropped_image():
         for c in t["concepts"]:
             c["board_ops"] = [op for op in c["board_ops"] if op["op"] not in ("svg", "image", "video", "media_task")]
     p = TeachingPlanDraft.model_validate(data)
-    assert validate_plan(p, "en", limits=DEFAULT_LIMITS)                                            # strict: rejected
-    assert validate_plan(p, "en", limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False)) == []
+    from app.services.tutor.plan_validator import board_quality_errors
+    # Servable either way — a missing picture is advice, not a failed compile.
+    assert validate_plan(p, "en", limits=DEFAULT_LIMITS) == []
+    assert any("nothing to look at" in n for n in board_quality_errors(p, limits=DEFAULT_LIMITS))
+    assert not board_quality_errors(p, limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False))
 
 
 def test_lesson_frame_shape_is_json_serialisable():
@@ -505,3 +508,62 @@ def test_kb_source_block_is_skipped_for_ungrounded_plans():
             "kb": {"knowledge_base_id": "kb1", "mode": "STRICT"}}
     assert sm.from_plan_view(view).kb == {"knowledge_base_id": "kb1", "mode": "STRICT"}
     assert sm.from_plan_view({**view, "kb": {"mode": "STRICT"}}).kb is None
+
+
+# ── a structurally sound plan is never thrown away for board quality ────────
+
+def _draft(**over):
+    """Smallest valid draft: one topic, one concept, a real check on the second."""
+    from app.schemas.tutor import TeachingPlanDraft
+    base = {
+        "language": "en",
+        "objectives": ["understand it"],
+        "key_terms": [],
+        "topics": [{
+            "id": "t1", "title": "Lagrange identity", "order": 1,
+            "summary_ops": [{"op": "bullet", "id": "t1-s1", "items": ["one", "two", "three"]}],
+            "summary_say": "That is the identity.",
+            "summary_say_i18n": {"hi": "यही identity है।"},
+            "concepts": [{
+                "id": "t1c1", "title": "Collapse with Lagrange", "order": 1, "concept_tags": ["algebra.lagrange"],
+                "say": "Look at the board and follow the collapse.", "say_i18n": {"hi": "बोर्ड देखिए और collapse follow कीजिए।"},
+                "board_ops": over.pop("ops", [{"op": "heading", "id": "t1c1-h", "text": "Lagrange identity"},
+                                              {"op": "formula", "id": "t1c1-f", "latex": "(a^2+b^2)(c^2+d^2)"}]),
+                "check": {"type": "none"},
+            }],
+        }],
+    }
+    base.update(over)
+    return TeachingPlanDraft.model_validate(base)
+
+
+def test_a_wordy_board_with_no_diagram_is_a_note_not_a_failure():
+    from app.services.tutor.plan_validator import validate_plan, soft_errors, board_quality_errors
+    wordy = [{"op": "heading", "id": "t1c1-h", "text": "Lagrange identity"},
+             {"op": "text", "id": "t1c1-t", "text": " ".join(["word"] * 80)}]
+    plan = _draft(ops=wordy)
+    # Structurally fine → the compile ships it.
+    assert validate_plan(plan, "en", require_media_urls=False) == []
+    # And the pedagogy asks come back as advice, once.
+    notes = board_quality_errors(plan)
+    assert any("keep a concept under 60" in n for n in notes)
+    assert any("nothing to look at" in n for n in notes)
+    assert set(notes) <= set(soft_errors(plan))
+
+
+def test_a_formula_board_satisfies_the_visual_rule():
+    from app.services.tutor.plan_validator import board_quality_errors
+    assert not any("nothing to look at" in n for n in board_quality_errors(_draft()))
+    table = [{"op": "heading", "id": "t1c1-h", "text": "Compare"},
+             {"op": "table", "id": "t1c1-tb", "rows": [["a", "b"], ["1", "2"]]}]
+    assert not any("nothing to look at" in n for n in board_quality_errors(_draft(ops=table)))
+
+
+def test_structural_problems_stay_fatal():
+    from app.services.tutor.plan_validator import validate_plan
+    silent = _draft()
+    silent.topics[0].concepts[0].say = "  "
+    assert any("say is empty" in e for e in validate_plan(silent, "en", require_media_urls=False))
+    dup = _draft()
+    dup.topics[0].concepts[0].id = "t1"
+    assert any("duplicate id" in e for e in validate_plan(dup, "en", require_media_urls=False))
