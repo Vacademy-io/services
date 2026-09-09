@@ -560,7 +560,7 @@ class PlanCompiler:
                             continue
                         # Engagement and diagram quality: one round, never a
                         # failure — a plan that still misses them is kept.
-                        soft = soft_errors(candidate, limits=self._limits(source))
+                        soft = soft_errors(candidate, limits=self._limits(source), source_text=source.text)
                         if soft and not asked_for_quality:
                             asked_for_quality = True
                             logger.info("Tutor compile: %d quality ask(s) for slide %s: %s", len(soft), source.slide_id, "; ".join(soft[:3])[:400])
@@ -597,7 +597,7 @@ class PlanCompiler:
         # What the quality round did not manage (a derivation that will not fit
         # the word budget, an abstract board with no diagram): kept with the
         # plan and shown to the admin, never a failed compile.
-        run.quality_notes = soft_errors(draft, limits=self._limits(source))
+        run.quality_notes = soft_errors(draft, limits=self._limits(source), source_text=source.text)
         if run.quality_notes:
             logger.info("Tutor compile: slide %s kept with %d quality note(s): %s",
                         source.slide_id, len(run.quality_notes), "; ".join(run.quality_notes[:3])[:400])

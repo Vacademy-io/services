@@ -567,3 +567,24 @@ def test_structural_problems_stay_fatal():
     dup = _draft()
     dup.topics[0].concepts[0].id = "t1"
     assert any("duplicate id" in e for e in validate_plan(dup, "en", require_media_urls=False))
+
+
+def test_problem_slide_first_board_must_carry_the_ask_and_options():
+    from app.services.tutor.plan_validator import question_coverage_errors
+    source = "\n".join([
+        r"Let a, b, c have magnitudes 1, 2, 3 satisfying \[ |(a\times b)\cdot c| = 6 \]",
+        "If d is a unit vector coplanar with b and c, find the value of:",
+        r"\[ \left|(\vec{a}\times\vec{c})\cdot\vec{d}\right|^{2} + \left|(\vec{a}\times\vec{c})\times\vec{d}\right|^{2} \]",
+        "(A) 9", "", "(B) 3", "", "(C) −9/2", "", "(D) 9/2",
+    ])
+    givens_only = _draft(ops=[{"op": "heading", "id": "t1c1-h", "text": "The Question"},
+                              {"op": "formula", "id": "t1c1-f", "latex": r"|(\vec{a}\times\vec{b})\cdot\vec{c}| = 6"}])
+    notes = question_coverage_errors(givens_only, source)
+    assert any("ask is missing" in n for n in notes) and any("options are missing" in n for n in notes)
+    full = _draft(ops=[{"op": "heading", "id": "t1c1-h", "text": "The Question"},
+                       {"op": "formula", "id": "t1c1-f", "latex": r"|(\vec a\times\vec b)\cdot\vec c| = 6"},
+                       {"op": "formula", "id": "t1c1-g", "latex": r"\left|(\vec{a}\times\vec{c})\cdot\vec{d}\right|^{2}+\left|(\vec{a}\times\vec{c})\times\vec{d}\right|^{2}"},
+                       {"op": "bullet", "id": "t1c1-o", "items": ["(A) 9", "(B) 3", "(C) −9/2", "(D) 9/2"]}])
+    assert question_coverage_errors(full, source) == []
+    # Prose slides with no ask are untouched.
+    assert question_coverage_errors(givens_only, "Plants make sugar from light. Chlorophyll is green.") == []

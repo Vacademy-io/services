@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from ...schemas.tutor import TeachingPlanDraft, VISUAL_OPS
 from .board_ops import iter_element_ops, op_words, ops_to_dicts, validate_ops
@@ -229,8 +229,59 @@ def board_quality_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LI
     return errors
 
 
-def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> List[str]:
-    errors: List[str] = board_quality_errors(plan, limits=limits)
+# ── question coverage: a problem slide's first board must carry the ask ─────
+_OPTION_LINE = re.compile(r"(?m)^\s*\(?([A-Da-d])[).:]\s*(.+?)\s*$")
+_ASK_CUE = re.compile(r"\b(find|determine|evaluate|calculate|what is|which of|the value of|equals?)\b", re.IGNORECASE)
+_DISPLAY_MATH = re.compile(r"\\\[(.+?)\\\]|\$\$(.+?)\$\$", re.S)
+
+
+def _norm_math(s: str) -> str:
+    return re.sub(r"[\s{}]|\\left|\\right|\\,|\\;|\\!", "", s or "").lower()
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[\s.,:;()\-–—]", "", s or "").lower()
+
+
+def question_coverage_errors(plan: TeachingPlanDraft, source_text: Optional[str]) -> List[str]:
+    """When the source reads like a problem (an ask, maybe options), the first
+    topic's boards must show the ask and the options. Advice, not fatal."""
+    if not source_text or not plan.topics:
+        return []
+    text = source_text
+    options = [_norm_text(v) for _l, v in _OPTION_LINE.findall(text) if len(v.strip()) <= 60]
+    if len(options) < 3:
+        options = []
+    # The display-math block that follows an ask cue is "what is asked".
+    asked: List[str] = []
+    for m in _DISPLAY_MATH.finditer(text):
+        before = text[max(0, m.start() - 160):m.start()]
+        if _ASK_CUE.search(before):
+            asked.append(_norm_math(m.group(1) or m.group(2) or ""))
+    if not options and not asked:
+        return []
+    first = plan.topics[0]
+    board_text = " ".join(
+        str(v) for c in first.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
+        for v in ([op.get("text")] + list(op.get("items") or []) + [cell for row in (op.get("rows") or []) for cell in row])
+        if isinstance(v, str)
+    )
+    board_latex = " ".join(str(op.get("latex") or "") for c in first.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
+                           if op.get("op") == "formula")
+    errors: List[str] = []
+    if asked and not any(a and a[:24] in _norm_math(board_latex) for a in asked):
+        errors.append(f"topics[0]('{first.title[:30]}'): the question's ask is missing — the first board must show, as a "
+                      f"formula op, exactly what the problem asks for (the source says: \\[ {asked[0][:80]} \\])")
+    if options:
+        shown = sum(1 for o in options if o and o in _norm_text(board_text))
+        if shown < max(2, len(options) - 1):
+            errors.append(f"topics[0]('{first.title[:30]}'): the answer options are missing from the first board — "
+                          f"list all {len(options)} options (a bullet op) so the learner sees the full question")
+    return errors
+
+
+def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS, source_text: Optional[str] = None) -> List[str]:
+    errors: List[str] = board_quality_errors(plan, limits=limits) + question_coverage_errors(plan, source_text)
     if not plan.topics:
         return errors
     total_checks = 0
