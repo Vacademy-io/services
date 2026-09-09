@@ -592,12 +592,13 @@ def test_placeholder_unknown_key_falls_back_and_warns(caplog):
     ctx = {"leadName": "Devaki", "leadFields": {}}
     with caplog.at_level("WARNING"):
         out = b._fill_placeholders("Hi {{totally_unknown}}!", ctx)
-    assert out == "Hi !"
+    # Whitespace cleanup (2026-09-09) closes the hole an empty value leaves.
+    assert out == "Hi!"
     assert any("unresolved" in r.getMessage() for r in caplog.records)
     # NO generic *_name -> lead_name fallback: endswith("name") also matches
     # {{school_name}}/{{child_name}}, so it would confidently speak the PARENT's
     # name as the school's or the child's. A hole beats a wrong name.
-    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi !"
+    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi!"
     assert b._fill_placeholders("child {{child_name}}", ctx) == "child "
     # …but the person we are CALLING is the parent, so this one does resolve.
     assert b._fill_placeholders("Hi {{parent_name}}!", ctx) == "Hi Devaki!"
@@ -2612,3 +2613,100 @@ def test_greet_ignores_a_stale_open_turn():
     assert fire(voice_until=9.0, turn_closes=None) >= 2.4
     # A silent line fires at the plain greet delay.
     assert fire(voice_until=0.0) <= 0.9
+
+
+# ── call c9aa4062 (2026-09-09): "September 10th dot WHAT time works best" ────
+# The LLM emitted a stray leading period, _SENT_END matched the bare "." as a
+# complete sentence, and Smallest TTS spoke it as the WORD "dot" — three times
+# in one call, until the caller asked "sorry, what is dot H four W?".
+
+
+@pytest.mark.asyncio
+async def test_letterless_chunks_never_reach_tts():
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Okay, Thursday September 10th. ", ".",
+                 "What time works best for you?")
+    assert all(any(ch.isalnum() for ch in t) for t in rec.text), rec.text
+    joined = " ".join(rec.text)
+    assert "What time works best" in joined
+    assert "September 10th" in joined
+
+
+@pytest.mark.asyncio
+async def test_letterless_tail_is_dropped_too():
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Sounds good. ", "..")
+    assert rec.text and all(any(ch.isalnum() for ch in t) for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_emitted_sentences_keep_a_joining_space_for_the_context():
+    """The assistant aggregator concatenates emitted frames verbatim; without a
+    separator the model's own context reads "…there.Nice to…" and the model
+    starts IMITATING the glued style (which is what produced the stray-period
+    chunks of call c9aa4062 in the first place)."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Hello there.Nice day, right?")
+    assert "".join(rec.text) == "Hello there. Nice day, right?", rec.text
+
+
+# ── call c9aa4062: the opening read the caller's phone number as her NAME ────
+
+
+def test_a_phone_number_is_never_a_lead_name():
+    assert b._lead_name_is_phone("919425677707")
+    assert b._lead_name_is_phone("+91 94256 77707")
+    assert b._lead_name_is_phone("91-9425-677-707")
+    assert not b._lead_name_is_phone("Ritu Sharma")
+    assert not b._lead_name_is_phone("Selvin")
+    assert not b._lead_name_is_phone("")
+    assert not b._lead_name_is_phone(None)
+    assert not b._lead_name_is_phone("Mary 2nd")
+
+
+def test_unknown_name_renders_empty_for_english_and_aap_for_hindi():
+    """"Hello, am I speaking with aap?" is as broken in English as reading the
+    number — the fallback must match the agent's language, and the cleanup must
+    close the grammar hole an empty value leaves."""
+    line = "Hello, am I speaking with {{name}}?"
+    en = b._fill_placeholders(line, {"leadName": None,
+                                     "agent": {"language": "english"}})
+    assert en == "Hello, am I speaking with?"
+    hi = b._fill_placeholders(line, {"leadName": None,
+                                     "agent": {"language": "hinglish"}})
+    assert hi == "Hello, am I speaking with aap?"
+    named = b._fill_placeholders(line, {"leadName": "Ritu",
+                                        "agent": {"language": "english"}})
+    assert named == "Hello, am I speaking with Ritu?"
+
+
+# ── call c9aa4062: "which number should I send it to?" → caller made to
+#    dictate the very number the bot had dialled ─────────────────────────────
+
+
+def test_dialled_number_line_reaches_both_prompt_branches():
+    authored = b.build_system_prompt({
+        "leadPhone": "919425677707",
+        "agent": {"name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+                  "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi."}})
+    assert "919425677707" in authored
+    assert "NEVER ask the caller to dictate" in authored
+    thin = b.build_system_prompt({
+        "leadPhone": "919425677707",
+        "agent": {"name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert "919425677707" in thin
+    no_phone = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert "dictate" not in no_phone
+
+
+def test_check_in_variation_rule_reaches_both_prompt_branches():
+    """Six "does that make sense?" turn-enders in three minutes (c9aa4062)."""
+    for sp in ("Bot: Hi! I am Aarushi. " * 40, "short"):
+        p = b.build_system_prompt({"agent": {
+            "name": "A", "systemPrompt": sp, "direction": "OUTBOUND",
+            "openingLine": "Hi! I am A."}})
+        assert "VARY your check-ins" in p

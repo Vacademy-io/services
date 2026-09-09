@@ -909,6 +909,12 @@ class NoRepeatGate(FrameProcessor):
         return " ".join(w for w in words if w) in cls._CONTENT_FREE
 
     async def _emit(self, text: str, direction):
+        # The End-branch strips its tail, so without this the assistant
+        # aggregator glues sentences into "…for you.How does that sound?" in
+        # the model's own context — and the model then IMITATES the glued
+        # style in later replies (call c9aa4062, 2026-09-09).
+        if self._emitted and text and not text[0].isspace():
+            text = " " + text
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         topic = question_topic(text)
@@ -988,6 +994,15 @@ class NoRepeatGate(FrameProcessor):
                 sentence, self._buf = self._buf[:m.end()], self._buf[m.end():]
                 if not sentence.strip():
                     continue
+                # A chunk with no letters or digits ("." from a stray leading
+                # period) is not speech — Smallest TTS reads it as the WORD
+                # "dot". Call c9aa4062: the caller heard "September 10th dot
+                # WHAT time works best" three times and asked "what is dot
+                # H four W?". Never let letterless text reach the TTS.
+                if not any(ch.isalnum() for ch in sentence):
+                    logger.info("no-repeat: dropping letterless chunk %r",
+                                sentence.strip()[:16])
+                    continue
                 if self._emitted == 0:
                     sentence = self._trim_echo(sentence)
                 # We already gave the caller one "you talk" turn and the model is
@@ -1016,6 +1031,9 @@ class NoRepeatGate(FrameProcessor):
         if isinstance(frame, LLMFullResponseEndFrame):
             tail = self._buf.strip()
             self._buf = ""
+            if tail and not any(ch.isalnum() for ch in tail):
+                logger.info("no-repeat: dropping letterless tail %r", tail[:16])
+                tail = ""
             if tail:
                 if self._emitted == 0:
                     tail = self._trim_echo(tail)
@@ -1789,9 +1807,14 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
         return text
     lead_name = context.get("leadName")
     agent_cfg = context.get("agent") or {}
+    # "aap" in an ENGLISH opening ("Hello, am I speaking with aap?") is as broken
+    # as a blank — for English agents an unknown name renders as nothing and the
+    # whitespace cleanup below closes the hole ("Is this ?" -> "Is this?").
+    _is_en = str(agent_cfg.get("language") or "").strip().lower().startswith("en")
+    _name_fallback = "" if _is_en else "aap"
     values = {
-        "lead_name": lead_name or "aap",
-        "name": lead_name or "aap",
+        "lead_name": lead_name or _name_fallback,
+        "name": lead_name or _name_fallback,
         "institute_name": _lead_field(context, "institute", "institute name", "company",
                                       "organisation", "organization") or "aapke institute",
         "lead_source": _lead_field(context, "source", "lead source", "lead_source",
@@ -1864,7 +1887,22 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
                 pass
         return ""
 
-    return _PLACEHOLDER_RE.sub(repl, text)
+    filled = _PLACEHOLDER_RE.sub(repl, text)
+    # An empty substitution leaves grammar debris in SPOKEN text ("Is this ?").
+    # Collapse runs of spaces and pull punctuation back onto the previous word.
+    filled = re.sub(r"[ \t]{2,}", " ", filled)
+    filled = re.sub(r" +([?!,.।;:])", r"\1", filled)
+    return filled
+
+
+def _lead_name_is_phone(name) -> bool:
+    """Is this "name" actually a phone number? ("919425677707", "+91 94256 77707")
+    Mostly digits and at least seven of them — a real name never is, and digit-
+    heavy junk ("Lead #4521-A") deserves the same treatment as a bare number."""
+    s = str(name or "")
+    digits = sum(ch.isdigit() for ch in s)
+    visible = sum(not ch.isspace() for ch in s)
+    return digits >= 7 and digits >= 0.7 * visible
 
 
 def _opening_is_substantive(opening: str, min_words: int = 4) -> bool:
@@ -2288,6 +2326,23 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "English, speak plain English only: no Hindi words, no Devanagari."
     )
     lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
+    # Call c9aa4062: the close asked "which number should I send the invite to?",
+    # the caller said "the same number we're talking on", and the agent then made
+    # her DICTATE it digit by digit — a number we dialled ourselves. Give the
+    # model the number so "this same number" is an answer it can act on.
+    _lead_phone = str(context.get("leadPhone") or "").strip()
+    dialled_number_line = (
+        f"- You dialled this call to {_lead_phone}. If they want something sent to "
+        f"'this number' / 'the same number', USE it: confirm it back yourself once, "
+        f"digit by digit without the country code — NEVER ask the caller to dictate "
+        f"a number you already have." if _lead_phone else "")
+    # Same call: the agent ended six turns in ~3 minutes with "Does that make
+    # sense?" / "How does that sound?" — a tic the check-in rule itself invited.
+    check_in_rule = (
+        "- VARY your check-ins: never end two replies in the same call with the same "
+        "check-in phrase ('does that make sense?', 'how does that sound?'). Usually the "
+        "next REAL question is the better turn-ender; with a brisk caller, drop "
+        "check-ins entirely.")
     fields_line = _lead_fields_line(context)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}.")
@@ -2435,9 +2490,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             fast_open_rule,
             no_echo_rule,
             warm_question_rule,
+            check_in_rule,
             one_step_rule,
             goal_drive_rule,
             lead_name_line,
+            dialled_number_line,
             fields_line,
             end_line,
             human_line,
@@ -2470,8 +2527,10 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         fast_open_rule,
         no_echo_rule,
         warm_question_rule,
+        check_in_rule,
         one_step_rule,
         goal_drive_rule,
+        dialled_number_line,
         ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "
          "acknowledge, never use the same word twice in a row."),
         # Scoped to a QUESTION or a CONCERN on purpose. Reflecting one back shows you
@@ -2522,6 +2581,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     _run_bot_t0 = time.time()
     settings = get_settings()
     agent = context.get("agent") or {}
+
+    # Live call c9aa4062 (2026-09-09): the audience list's "name" column held the
+    # PHONE NUMBER, so the scripted opening read twelve digits aloud — "Hello, is
+    # this nine one nine four two five…?". A number is never a person's name:
+    # blank it here, once, so {{name}} falls back, name_sanity_rule applies, and
+    # the report doesn't carry a phone number as customerName either.
+    if _lead_name_is_phone(context.get("leadName")):
+        logger.warning("lead name %r is a phone number — treating as no name corr=%s",
+                       str(context.get("leadName"))[:24], corr)
+        context["leadName"] = None
 
     flags = CallState(t=time.time())
     diag = diag_mod.CallDiagnostics()
