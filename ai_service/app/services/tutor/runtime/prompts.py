@@ -15,12 +15,12 @@ T = {
         "hi": "नमस्ते {name}! मैं {teacher} हूँ और आज मैं आपको पढ़ाऊँगी। हम {slide} से शुरू कर रहे हैं। चलिए शुरू करते हैं।",
     },
     "greet_interview": {
-        "en": "Hi {name}, I'm {teacher}. I'll be your interviewer today for {slide}. Think aloud, take your time, and I'll give you feedback after each answer. Ready?",
-        "hi": "नमस्ते {name}, मैं {teacher} हूँ। आज {slide} के लिए मैं आपका interviewer हूँ। सोचते हुए बोलिए, समय लीजिए, और हर जवाब के बाद मैं feedback दूँगी। तैयार?",
+        "en": "Hi {name}, I'm {teacher}, and I'll be your interviewer today. Think aloud, take your time, and I'll give you feedback after each answer. Ready?",
+        "hi": "नमस्ते {name}, मैं {teacher} हूँ, और आज मैं आपका interviewer हूँ। सोचते हुए बोलिए, समय लीजिए, और हर जवाब के बाद मैं feedback दूँगी। तैयार?",
     },
     "greet_practice": {
-        "en": "Hi {name}, I'm {teacher}. This is a practice session on {slide}: I'll set up a situation, you try it, and we improve it together. Let's start.",
-        "hi": "नमस्ते {name}, मैं {teacher} हूँ। यह {slide} पर practice session है: मैं situation दूँगी, आप try करेंगे, और हम साथ में बेहतर करेंगे। शुरू करते हैं।",
+        "en": "Hi {name}, I'm {teacher}. This is a practice session: I'll set up a situation, you try it, and we improve it together. Let's start.",
+        "hi": "नमस्ते {name}, मैं {teacher} हूँ। यह एक practice session है: मैं situation दूँगी, आप try करेंगे, और हम साथ में बेहतर करेंगे। शुरू करते हैं।",
     },
     "resume": {
         "en": "Welcome back, {name}! Last time we were in {slide}. {summary} Let's pick up from where we left off.",
