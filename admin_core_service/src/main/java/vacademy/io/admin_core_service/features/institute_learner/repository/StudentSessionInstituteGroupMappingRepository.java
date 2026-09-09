@@ -148,6 +148,10 @@ public interface StudentSessionInstituteGroupMappingRepository
   /**
    * Learners who started an enrolment but never completed checkout, one row per learner.
    *
+   * <p>The caller chooses which plan statuses count: PENDING_FOR_PAYMENT is an abandoned
+   * cart (payment never attempted), PAYMENT_FAILED is a payment that was tried and
+   * declined. Those want different follow-up copy, so they are queried separately.
+   *
    * <p>Each retry creates a fresh user_plan, so a naive per-plan query messages the same person
    * repeatedly -- DISTINCT ON (up.user_id) with the ORDER BY below keeps only their most recent
    * attempt, which also carries the invite they last chose rather than the one they first tried.
@@ -171,7 +175,7 @@ public interface StudentSessionInstituteGroupMappingRepository
       JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
       JOIN student s        ON s.user_id = up.user_id
       WHERE ei.institute_id = :instituteId
-        AND up.status IN ('PENDING_FOR_PAYMENT', 'PAYMENT_FAILED')
+        AND up.status IN (:statuses)
         AND CAST(up.created_at AS date) BETWEEN CURRENT_DATE - CAST(:maxAgeDays AS int)
                                             AND CURRENT_DATE - CAST(:minAgeDays AS int)
         AND s.mobile_number IS NOT NULL
@@ -185,6 +189,7 @@ public interface StudentSessionInstituteGroupMappingRepository
       """, nativeQuery = true)
   List<Object[]> findAbandonedCartPlans(
       @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses,
       @Param("minAgeDays") int minAgeDays,
       @Param("maxAgeDays") int maxAgeDays);
 
