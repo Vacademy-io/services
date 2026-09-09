@@ -1,9 +1,13 @@
 import { useInboxStore } from '../-stores/inbox-store';
 import { InboxConversation, InboxFilter } from '../-services/inbox-api';
-import { MagnifyingGlass, WarningCircle, HandWaving } from '@phosphor-icons/react';
+import { DeliveryTicks, deliveryState } from './delivery-ticks';
+import { formatConversationTime } from '../-utils/day-labels';
+import { MagnifyingGlass, WarningCircle, HandWaving, ArrowClockwise } from '@phosphor-icons/react';
 
 interface Props {
     onLoadMore: () => void;
+    /** Re-run the conversation load after it failed. */
+    onRetry: () => void;
 }
 
 const FILTERS: Array<{ key: InboxFilter; label: string; title: string }> = [
@@ -20,7 +24,7 @@ const FILTERS: Array<{ key: InboxFilter; label: string; title: string }> = [
     },
 ];
 
-export function ConversationList({ onLoadMore }: Props) {
+export function ConversationList({ onLoadMore, onRetry }: Props) {
     const conversations = useInboxStore((s) => s.conversations);
     const selectedPhone = useInboxStore((s) => s.selectedPhone);
     const selectPhone = useInboxStore((s) => s.selectPhone);
@@ -30,6 +34,7 @@ export function ConversationList({ onLoadMore }: Props) {
     const setFilter = useInboxStore((s) => s.setFilter);
     const isLoading = useInboxStore((s) => s.isLoadingConversations);
     const hasMore = useInboxStore((s) => s.hasMoreConversations);
+    const error = useInboxStore((s) => s.conversationsError);
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -78,9 +83,32 @@ export function ConversationList({ onLoadMore }: Props) {
                 )}
             </div>
 
+            {/* A load that failed is said out loud. With conversations already on screen it is a
+                thin strip above them — a background poll failing must not blank the list — and with
+                nothing on screen it replaces the "no conversations yet" line, which would otherwise
+                claim this institute has never sent a WhatsApp message. */}
+            {error && (
+                <div className="border-b border-red-200 bg-red-50 px-3 py-2">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-red-700">
+                        <WarningCircle size={14} /> {error.title}
+                    </p>
+                    {error.detail && (
+                        <p className="mt-0.5 text-caption text-red-600">{error.detail}</p>
+                    )}
+                    <button
+                        onClick={onRetry}
+                        disabled={isLoading}
+                        className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-caption font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-60"
+                    >
+                        <ArrowClockwise size={12} />
+                        {isLoading ? 'Retrying…' : 'Try again'}
+                    </button>
+                </div>
+            )}
+
             {/* Conversation list */}
             <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
-                {conversations.length === 0 && !isLoading ? (
+                {conversations.length === 0 && !isLoading && !error ? (
                     <p className="p-4 text-sm text-gray-400 text-center">{emptyText(filter)}</p>
                 ) : (
                     conversations.map((c) => (
@@ -102,7 +130,7 @@ export function ConversationList({ onLoadMore }: Props) {
                                 </div>
                                 <div className="flex flex-col items-end ml-2 shrink-0">
                                     <span className="text-[10px] text-gray-400">
-                                        {c.lastMessageTime ? formatTime(c.lastMessageTime) : ''}
+                                        {formatConversationTime(c.lastMessageTime)}
                                     </span>
                                     {(c.unreadCount ?? 0) > 0 && (
                                         <span className="mt-1 bg-green-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
@@ -140,8 +168,15 @@ export function ConversationList({ onLoadMore }: Props) {
                             )}
 
                             <p className="text-xs text-gray-500 mt-1 truncate">
+                                {/* The real state of the last outgoing message. This used to be a
+                                    hard-coded single tick, so a read message and a refused one
+                                    looked identical here. */}
                                 {c.lastMessageType === 'OUTGOING' && (
-                                    <span className="text-green-600">✓ </span>
+                                    <DeliveryTicks
+                                        state={deliveryState(c.lastMessageStatus)}
+                                        size={12}
+                                        className="mr-1"
+                                    />
                                 )}
                                 {c.lastMessage || ''}
                             </p>
@@ -173,21 +208,4 @@ function escalationTitle(c: InboxConversation): string {
                 ? 'Handed over by an admin'
                 : "The assistant didn't have the information to answer";
     return c.escalationMessage ? `${why}\n\nThey asked: ${c.escalationMessage}` : why;
-}
-
-function formatTime(timestamp: string): string {
-    try {
-        const d = new Date(timestamp);
-        const now = new Date();
-        const isToday = d.toDateString() === now.toDateString();
-        if (isToday) {
-            return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        }
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    } catch {
-        return '';
-    }
 }
