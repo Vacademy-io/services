@@ -54,6 +54,20 @@
         "requireCampaign": {
             "label": "Require a campaign name",
             "hint": "Blocks generating a link until utm_campaign is filled in. Source and medium without a campaign is the usual reason a report is unreadable."
+        },
+        "anyPage": {
+            "label": "Build a link for any other page",
+            "hint": "The login, sign-up or any landing page has no share menu. Pick one or type a path, then generate the tagged link.",
+            "placeholder": "/login",
+            "action": "Generate UTM link",
+            "presets": {
+                "login": "Login page",
+                "signup": "Sign-up page",
+                "home": "Home"
+            }
+        },
+        "footer": {
+            "save": "Save Campaign Link Settings"
         }
     }
 }

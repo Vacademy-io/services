@@ -9,7 +9,8 @@
         "ASSESSMENT": "मूल्यांकन",
         "ENROLL_INVITE": "नामांकन आमंत्रण",
         "PRODUCT_PAGE": "प्रोडक्ट पेज",
-        "CATALOGUE": "कैटलॉग साइट"
+        "CATALOGUE": "कैटलॉग साइट",
+        "CUSTOM": "कोई भी पेज"
     },
     "destination": {
         "label": "गंतव्य",

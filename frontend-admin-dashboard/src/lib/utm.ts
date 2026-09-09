@@ -23,6 +23,8 @@ export type UtmValues = Partial<Record<UtmKey, string>>;
 
 /** Where a generated link points — recorded with the lead for reporting. */
 export type UtmSourceType =
+    /** Not a share surface — any other page (login, sign-up, a landing page). */
+    | 'CUSTOM'
     | 'AUDIENCE'
     | 'LIVE_SESSION'
     | 'ASSESSMENT'
