@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Plus, Copy, Trash, Play, Pause, ChartBar } from '@phosphor-icons/react';
+import { Plus, Copy, Trash, Play, Pause, ChartBar, Warning } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import {
     listChatbotFlows,
@@ -8,15 +8,24 @@ import {
     duplicateChatbotFlow,
     activateChatbotFlow,
     deactivateChatbotFlow,
+    fetchChatbotFlowAiUsage,
 } from '../-services/chatbot-flow-api';
 import { ChatbotFlowDTO } from '@/types/chatbot-flow/chatbot-flow-types';
 import { getInstituteId } from '@/constants/helper';
 import { SessionViewer } from './session-viewer';
+import { FlowAiUsagePanel } from './flow-ai-usage-panel';
 
 export function FlowListPage() {
     const [flows, setFlows] = useState<ChatbotFlowDTO[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewingSessionsFlow, setViewingSessionsFlow] = useState<ChatbotFlowDTO | null>(null);
+    const [tab, setTab] = useState<'flows' | 'usage'>('flows');
+    /**
+     * Null = not known yet (or the check failed). Only an explicit `false` means the
+     * institute is out of AI credits and the engine has stopped calling the model —
+     * an unknown state must not render as a scary banner.
+     */
+    const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const navigate = useNavigate();
     const instituteId = getInstituteId() || '';
 
@@ -34,6 +43,11 @@ export function FlowListPage() {
 
     useEffect(() => {
         loadFlows();
+        // Funding state for the AI Reply steps. Best effort — if the credits service
+        // can't be reached we say nothing rather than claiming the bot is broken.
+        fetchChatbotFlowAiUsage()
+            .then((usage) => setAiEnabled(usage.aiEnabled))
+            .catch(() => setAiEnabled(null));
     }, []);
 
     const handleCreate = () => {
@@ -124,7 +138,52 @@ export function FlowListPage() {
                 </button>
             </div>
 
-            {loading ? (
+            {aiEnabled === false && (
+                <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <Warning size={18} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div className="text-sm text-amber-800">
+                        <p className="font-medium">
+                            AI Reply steps are paused — this institute has no AI credits.
+                        </p>
+                        <p className="mt-0.5 text-amber-700">
+                            The rest of every flow still runs. AI Reply steps stop calling the model
+                            and hand the conversation to a human in the WhatsApp Inbox until you top
+                            up.{' '}
+                            <button
+                                onClick={() => setTab('usage')}
+                                className="font-medium underline underline-offset-2"
+                            >
+                                See AI usage
+                            </button>
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            <div className="mb-4 flex gap-1 border-b">
+                {(
+                    [
+                        ['flows', 'Flows'],
+                        ['usage', 'AI Usage'],
+                    ] as const
+                ).map(([key, label]) => (
+                    <button
+                        key={key}
+                        onClick={() => setTab(key)}
+                        className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+                            tab === key
+                                ? 'border-blue-600 font-medium text-blue-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {tab === 'usage' ? (
+                <FlowAiUsagePanel />
+            ) : loading ? (
                 <div className="text-center py-12 text-gray-400">Loading...</div>
             ) : flows.length === 0 ? (
                 <div className="text-center py-12">

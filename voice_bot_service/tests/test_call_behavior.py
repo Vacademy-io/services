@@ -592,12 +592,13 @@ def test_placeholder_unknown_key_falls_back_and_warns(caplog):
     ctx = {"leadName": "Devaki", "leadFields": {}}
     with caplog.at_level("WARNING"):
         out = b._fill_placeholders("Hi {{totally_unknown}}!", ctx)
-    assert out == "Hi !"
+    # Whitespace cleanup (2026-09-09) closes the hole an empty value leaves.
+    assert out == "Hi!"
     assert any("unresolved" in r.getMessage() for r in caplog.records)
     # NO generic *_name -> lead_name fallback: endswith("name") also matches
     # {{school_name}}/{{child_name}}, so it would confidently speak the PARENT's
     # name as the school's or the child's. A hole beats a wrong name.
-    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi !"
+    assert b._fill_placeholders("Hi {{school_name}}!", ctx) == "Hi!"
     assert b._fill_placeholders("child {{child_name}}", ctx) == "child "
     # …but the person we are CALLING is the parent, so this one does resolve.
     assert b._fill_placeholders("Hi {{parent_name}}!", ctx) == "Hi Devaki!"
@@ -1443,6 +1444,33 @@ def test_plain_hindi_register_rule_targets_the_words_actually_used():
         "name": "Ann", "language": "english", "systemPrompt": "Bot: Hi! " * 80,
         "direction": "OUTBOUND", "openingLine": "Hi!"}})
     assert "PHONE HINDI" not in en
+
+
+def test_warm_question_rule_reaches_every_prompt_branch(monkeypatch):
+    """Founder, 2026-09-08, live-testing the yoga agent: "it's asking questions as
+    if she is my mother — 'hey, do you take live classes?' is not the right way...
+    humanize the prompt, and inculcate this into AI calling in general". "In
+    general" means the rule must ride the platform, not one authored script — so
+    it must appear for BOTH the authored-prompt branch and the thin-prompt
+    scaffold, and honour its kill switch."""
+    MARK = "ASK LIKE A PERSON, NOT A FORM"
+    authored = b.build_system_prompt({"agent": {
+        "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+        "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+    assert MARK in authored
+    thin = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert MARK in thin
+    monkeypatch.setenv("WARM_QUESTIONS_ENABLED", "false")
+    from app.config import get_settings as _gs
+    _gs.cache_clear()  # get_settings is lru_cached; force a re-read of the env
+    try:
+        off = b.build_system_prompt({"agent": {
+            "name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+            "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi from Vacademy."}})
+        assert MARK not in off
+    finally:
+        _gs.cache_clear()  # never leave the off-switch cached for later tests
 
 
 def test_language_switch_on_request_is_permanent():
@@ -2585,3 +2613,218 @@ def test_greet_ignores_a_stale_open_turn():
     assert fire(voice_until=9.0, turn_closes=None) >= 2.4
     # A silent line fires at the plain greet delay.
     assert fire(voice_until=0.0) <= 0.9
+
+
+# ── call c9aa4062 (2026-09-09): "September 10th dot WHAT time works best" ────
+# The LLM emitted a stray leading period, _SENT_END matched the bare "." as a
+# complete sentence, and Smallest TTS spoke it as the WORD "dot" — three times
+# in one call, until the caller asked "sorry, what is dot H four W?".
+
+
+@pytest.mark.asyncio
+async def test_letterless_chunks_never_reach_tts():
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Okay, Thursday September 10th. ", ".",
+                 "What time works best for you?")
+    assert all(any(ch.isalnum() for ch in t) for t in rec.text), rec.text
+    joined = " ".join(rec.text)
+    assert "What time works best" in joined
+    assert "September 10th" in joined
+
+
+@pytest.mark.asyncio
+async def test_letterless_tail_is_dropped_too():
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Sounds good. ", "..")
+    assert rec.text and all(any(ch.isalnum() for ch in t) for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_emitted_sentences_keep_a_joining_space_for_the_context():
+    """The assistant aggregator concatenates emitted frames verbatim; without a
+    separator the model's own context reads "…there.Nice to…" and the model
+    starts IMITATING the glued style (which is what produced the stray-period
+    chunks of call c9aa4062 in the first place)."""
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    await _reply(g, "Hello there.Nice day, right?")
+    assert "".join(rec.text) == "Hello there. Nice day, right?", rec.text
+
+
+# ── call c9aa4062: the opening read the caller's phone number as her NAME ────
+
+
+def test_a_phone_number_is_never_a_lead_name():
+    assert b._lead_name_is_phone("919425677707")
+    assert b._lead_name_is_phone("+91 94256 77707")
+    assert b._lead_name_is_phone("91-9425-677-707")
+    assert not b._lead_name_is_phone("Ritu Sharma")
+    assert not b._lead_name_is_phone("Selvin")
+    assert not b._lead_name_is_phone("")
+    assert not b._lead_name_is_phone(None)
+    assert not b._lead_name_is_phone("Mary 2nd")
+
+
+def test_unknown_name_renders_empty_for_english_and_aap_for_hindi():
+    """"Hello, am I speaking with aap?" is as broken in English as reading the
+    number — the fallback must match the agent's language, and the cleanup must
+    close the grammar hole an empty value leaves."""
+    line = "Hello, am I speaking with {{name}}?"
+    en = b._fill_placeholders(line, {"leadName": None,
+                                     "agent": {"language": "english"}})
+    assert en == "Hello, am I speaking with?"
+    hi = b._fill_placeholders(line, {"leadName": None,
+                                     "agent": {"language": "hinglish"}})
+    assert hi == "Hello, am I speaking with aap?"
+    named = b._fill_placeholders(line, {"leadName": "Ritu",
+                                        "agent": {"language": "english"}})
+    assert named == "Hello, am I speaking with Ritu?"
+
+
+# ── call c9aa4062: "which number should I send it to?" → caller made to
+#    dictate the very number the bot had dialled ─────────────────────────────
+
+
+def test_dialled_number_line_reaches_both_prompt_branches():
+    authored = b.build_system_prompt({
+        "leadPhone": "919425677707",
+        "agent": {"name": "Aarushi", "systemPrompt": "Bot: Hi! I am Aarushi. " * 40,
+                  "direction": "OUTBOUND", "openingLine": "Hi! I am Aarushi."}})
+    assert "919425677707" in authored
+    assert "NEVER ask the caller to dictate" in authored
+    thin = b.build_system_prompt({
+        "leadPhone": "919425677707",
+        "agent": {"name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert "919425677707" in thin
+    no_phone = b.build_system_prompt({"agent": {
+        "name": "A", "systemPrompt": "short", "direction": "OUTBOUND"}})
+    assert "dictate" not in no_phone
+
+
+def test_check_in_variation_rule_reaches_both_prompt_branches():
+    """Six "does that make sense?" turn-enders in three minutes (c9aa4062)."""
+    for sp in ("Bot: Hi! I am Aarushi. " * 40, "short"):
+        p = b.build_system_prompt({"agent": {
+            "name": "A", "systemPrompt": sp, "direction": "OUTBOUND",
+            "openingLine": "Hi! I am A."}})
+        assert "VARY your check-ins" in p
+
+
+# ── calls c9aa4062 / e73a839b / 0e26a0c9 (2026-09-09): the 15-19 s "audio wasn't
+#    ready" stalls were Smallest returning a ~200 Hz DRONE for English text tagged
+#    `hi` on lightning_v3.1_pro/mrunal (72.5 s for "Ah, okay, so you've got some
+#    automation in place."; 4 of 101 sentences; 0 of 101 tagged `en`) ──────────
+
+
+def test_smallest_language_follows_the_agent_not_a_constant(monkeypatch):
+    import sys, types
+    fake = types.SimpleNamespace(EN="en", HI="hi")
+    mod = sys.modules.get("pipecat.transcriptions.language")
+    if mod is None:
+        mod = types.ModuleType("pipecat.transcriptions.language")
+        sys.modules["pipecat.transcriptions.language"] = mod
+    monkeypatch.setattr(mod, "Language", fake, raising=False)
+    assert pv._smallest_language("english") == "en"
+    assert pv._smallest_language("English") == "en"
+    assert pv._smallest_language("en-IN") == "en"
+    # Hinglish / Hindi / unset keep the code-switching Hindi tag.
+    assert pv._smallest_language("hinglish") == "hi"
+    assert pv._smallest_language("hindi") == "hi"
+    assert pv._smallest_language(None) == "hi"
+    assert pv._smallest_language("") == "hi"
+
+
+def test_build_tts_call_site_passes_the_agent_language():
+    """The factory can only honour the language if run_bot hands it over."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    call = src[src.index("tts = build_tts("):]
+    call = call[:call.index(")\n")]
+    assert 'language=agent.get("language")' in call
+    assert "language" in inspect.signature(pv.build_tts).parameters
+
+
+# ── call 9e566e32 (2026-09-09): the callee's pickup "Hello" 250ms into our opening
+#    cut it after "Hi,"; the carry-on cue said "do not re-greet" and the model went
+#    straight to "Thanks. So the reason I called…" — caller hung up at 11s ─────────
+
+
+def test_opening_barely_heard_is_only_true_at_the_opening():
+    opening = "Hi, is this Shreyash? Aarushi from Vacademy — we came to know you run yoga sessions. Do you have two minutes?"
+    assert b._opening_barely_heard(opening, [{"role": "assistant", "text": "Hi,"}], 0.0)
+    assert b._opening_barely_heard(opening, [], 0.0)          # nothing recorded at all
+    # Heard most of it: the ordinary continuation path, not a re-say.
+    assert not b._opening_barely_heard(opening, [{"role": "assistant", "text": opening[:90]}], 0.0)
+    # An LLM reply has already run: the opening is history, whatever was played.
+    assert not b._opening_barely_heard(opening, [{"role": "assistant", "text": "Hi,"}], 123.4)
+    assert not b._opening_barely_heard("", [], 0.0)
+
+
+async def _collector_with_resay(rec, resay):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True, resay_opening=resay)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = rec.__dict__.setdefault("_bi", _noop_broadcast)
+    return tc
+
+
+async def _noop_broadcast():
+    return None
+
+
+def _cue_texts(rec):
+    out = []
+    for f in rec.frames:
+        for m in (getattr(f, "messages", None) or []):
+            out.append(str(m.get("content", "")))
+    return out
+
+
+@pytest.mark.asyncio
+async def test_a_hello_that_cuts_the_opening_resays_it_instead_of_carrying_on():
+    rec = _Rec()
+    calls = []
+
+    async def resay(text):
+        calls.append(text)
+        return True
+    tc = await _collector_with_resay(rec, resay)
+    await _feed(tc, "Hello.")
+    assert calls == ["Hello."]
+    cues = _cue_texts(rec)
+    assert "Hello." in cues, "absorb-but-never-lose: the ack still reaches the context"
+    assert not any("carry on" in c or "re-greet" in c for c in cues), cues
+
+
+@pytest.mark.asyncio
+async def test_a_hello_mid_pitch_still_gets_the_carry_on_cue():
+    """resay says 'not the opening' -> today's behaviour, byte for byte."""
+    rec = _Rec()
+
+    async def resay(text):
+        return False
+    tc = await _collector_with_resay(rec, resay)
+    await _feed(tc, "Hello.")
+    assert any("carry on" in c for c in _cue_texts(rec)), _cue_texts(rec)
+
+
+def test_watchdog_speaks_the_bridge_line_on_llm_bridge():
+    """The decision is pure (test_timeline); this pins the I/O side: run_bot
+    wires the configured threshold in and speaks bridge_line, off-context."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert "llm_bridge_after_secs=(settings.llm_bridge_after_secs" in src
+    handler = src[src.index("if d.kind == LLM_BRIDGE:"):]
+    handler = handler[:handler.index("continue")]
+    assert "TTSSpeakFrame(bridge_line, append_to_context=False)" in handler
+    assert 'diag.bump("llm_bridges")' in handler

@@ -20,6 +20,7 @@ import { useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
 import { createWorkflow, updateWorkflow, testRunWorkflow, validateWorkflow, getTriggerEventsCatalogQuery } from '@/services/workflow-service';
 import { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
 import { getUserId } from '@/utils/userDetails';
+import { cn } from '@/lib/utils';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { WorkflowCustomNode } from './workflow-custom-node';
 import { NodePalette } from './node-palette';
@@ -28,7 +29,7 @@ import { TemplateGallery } from './template-gallery';
 import { NodeSuggestions } from './node-suggestions';
 import { WorkflowWizard } from './workflow-wizard';
 import { AiDraftPanel } from './ai-draft-panel';
-import { EventEntityPicker } from './event-entity-picker';
+import { EventEntityPicker, useEntityLabels } from './event-entity-picker';
 import { UseCaseWizardStep } from './use-case-wizard-step';
 
 const nodeTypes = { workflowNode: WorkflowCustomNode };
@@ -763,11 +764,55 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
 }
 
 // ═══════════════════════════════════════════════════
+// TRIGGER SCOPE — which entities the workflow actually fires for
+// ═══════════════════════════════════════════════════
+/**
+ * Names, not counts. "1 selected" told an admin nothing about WHICH audience a workflow was
+ * wired to -- the only way to find out was to reopen the setup wizard, and the ids the
+ * summary fell back to are not something anyone can recognise. Labels come from the same
+ * hook that populates EventEntityPicker, so what's shown here is exactly what was picked.
+ */
+function TriggerEntitySummary({ eventAppliedType, eventIds, eventId, instituteId }: {
+    eventAppliedType?: string;
+    eventIds?: string[];
+    eventId?: string;
+    instituteId: string;
+}) {
+    const ids = eventIds?.length ? eventIds : eventId ? [eventId] : [];
+    const { labels, isLoading } = useEntityLabels(eventAppliedType, ids, instituteId);
+
+    // An empty selection is the deliberate "fires for everything" choice, not missing data.
+    if (ids.length === 0) {
+        return <span className="text-gray-400">all {(eventAppliedType ?? 'record').replace(/_/g, ' ').toLowerCase()}s</span>;
+    }
+    if (isLoading) {
+        return <span className="text-gray-400">{ids.length} selected…</span>;
+    }
+    return (
+        <span className="flex flex-wrap items-center gap-1">
+            {labels.map((l) => (
+                <span
+                    key={l.id}
+                    title={l.resolved ? l.id : `${l.id} — no longer exists`}
+                    className={cn(
+                        'rounded-full px-1.5 py-0.5 text-caption font-medium',
+                        l.resolved ? 'bg-amber-100 text-amber-800' : 'bg-red-50 text-red-700 line-through'
+                    )}
+                >
+                    {l.label}
+                </span>
+            ))}
+        </span>
+    );
+}
+
+// ═══════════════════════════════════════════════════
 // COMPACT CONFIG SUMMARY — Always visible at top of right panel
 // ═══════════════════════════════════════════════════
-function WorkflowConfigSummary({ triggerEventsCatalog, onEdit }: {
+function WorkflowConfigSummary({ triggerEventsCatalog, onEdit, instituteId }: {
     triggerEventsCatalog: Array<{ key: string; label: string; event_applied_type?: string }>;
     onEdit: () => void;
+    instituteId: string;
 }) {
     const { workflowType, scheduleConfig, triggerConfig } = useWorkflowBuilderStore();
     const [expanded, setExpanded] = useState(false);
@@ -807,18 +852,12 @@ function WorkflowConfigSummary({ triggerEventsCatalog, onEdit }: {
                                 {triggerConfig.eventAppliedType.replace(/_/g, ' ')}
                             </span>
                         )}
-                        {(triggerConfig.eventIds?.length ?? 0) > 1 && (
-                            <span className="text-gray-400">{triggerConfig.eventIds!.length} selected</span>
-                        )}
-                        {(triggerConfig.eventIds?.length ?? 0) === 1 && (
-                            <span className="text-gray-400">1 selected</span>
-                        )}
-                        {!(triggerConfig.eventIds?.length) && triggerConfig.eventId && (
-                            <span className="text-gray-400">ID: {triggerConfig.eventId}</span>
-                        )}
-                        {!(triggerConfig.eventIds?.length) && !triggerConfig.eventId && (
-                            <span className="text-gray-400">(all)</span>
-                        )}
+                        <TriggerEntitySummary
+                            eventAppliedType={triggerConfig.eventAppliedType}
+                            eventIds={triggerConfig.eventIds}
+                            eventId={triggerConfig.eventId}
+                            instituteId={instituteId}
+                        />
                     </div>
                 ) : (
                     <div>
@@ -1144,6 +1183,7 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                     <WorkflowConfigSummary
                         triggerEventsCatalog={triggerEventsCatalog}
                         onEdit={() => setSetupComplete(false)}
+                        instituteId={instituteId}
                     />
 
                     {/* Node config or workflow info */}

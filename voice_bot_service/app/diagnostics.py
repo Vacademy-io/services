@@ -277,6 +277,12 @@ class CallDiagnostics:
     # and skips ahead — see bot._greet_when_ready. Counted, not scored: it is a
     # normal thing for a caller to do, and the correction handles it.
     opening_truncated: int = 0
+    # The caller's pickup "hello" cut the opening at its start and the opening
+    # was spoken again (call 9e566e32, 2026-09-09). At most 1 per call.
+    opening_resaid: int = 0
+    # "Just a second." spoken because a reply was composing with no audio for
+    # LLM_BRIDGE_AFTER_SECS (call c130e39f, 2026-09-09). One per slow reply.
+    llm_bridges: int = 0
     prompt_unfilled: List[str] = field(default_factory=list)
     crash: Optional[str] = None
     transfer_requested: bool = False
@@ -857,6 +863,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "greetDelaySecs": d.greet_delay_secs,
                 "setupSecs": d.setup_secs,
                 "openingTruncated": d.opening_truncated,
+                "openingResaid": d.opening_resaid,
+                "llmBridges": d.llm_bridges,
             },
             "machine": {
                 "score": machine_score(d),

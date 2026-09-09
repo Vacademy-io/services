@@ -1,18 +1,40 @@
 import { useInboxStore } from '../-stores/inbox-store';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { InboxConversation, InboxFilter } from '../-services/inbox-api';
+import { DeliveryTicks, deliveryState } from './delivery-ticks';
+import { formatConversationTime } from '../-utils/day-labels';
+import { MagnifyingGlass, WarningCircle, HandWaving, ArrowClockwise } from '@phosphor-icons/react';
 
 interface Props {
     onLoadMore: () => void;
+    /** Re-run the conversation load after it failed. */
+    onRetry: () => void;
 }
 
-export function ConversationList({ onLoadMore }: Props) {
+const FILTERS: Array<{ key: InboxFilter; label: string; title: string }> = [
+    { key: 'ALL', label: 'All', title: 'Every conversation' },
+    {
+        key: 'UNANSWERED',
+        label: 'Unanswered',
+        title: 'The chatbot handed these over and nobody has replied yet',
+    },
+    {
+        key: 'FAILED',
+        label: 'Not delivered',
+        title: 'Conversations where a message was refused by WhatsApp',
+    },
+];
+
+export function ConversationList({ onLoadMore, onRetry }: Props) {
     const conversations = useInboxStore((s) => s.conversations);
     const selectedPhone = useInboxStore((s) => s.selectedPhone);
     const selectPhone = useInboxStore((s) => s.selectPhone);
     const searchQuery = useInboxStore((s) => s.searchQuery);
     const setSearchQuery = useInboxStore((s) => s.setSearchQuery);
+    const filter = useInboxStore((s) => s.filter);
+    const setFilter = useInboxStore((s) => s.setFilter);
     const isLoading = useInboxStore((s) => s.isLoadingConversations);
     const hasMore = useInboxStore((s) => s.hasMoreConversations);
+    const error = useInboxStore((s) => s.conversationsError);
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -39,12 +61,55 @@ export function ConversationList({ onLoadMore }: Props) {
                         className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
                     />
                 </div>
+
+                {/* Filters — hidden while searching, since search spans every conversation */}
+                {!searchQuery && (
+                    <div className="mt-2 flex gap-1">
+                        {FILTERS.map((f) => (
+                            <button
+                                key={f.key}
+                                onClick={() => setFilter(f.key)}
+                                title={f.title}
+                                className={`flex-1 rounded-md px-2 py-1 text-caption font-medium transition ${
+                                    filter === f.key
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'text-gray-500 hover:bg-gray-100'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
+
+            {/* A load that failed is said out loud. With conversations already on screen it is a
+                thin strip above them — a background poll failing must not blank the list — and with
+                nothing on screen it replaces the "no conversations yet" line, which would otherwise
+                claim this institute has never sent a WhatsApp message. */}
+            {error && (
+                <div className="border-b border-red-200 bg-red-50 px-3 py-2">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-red-700">
+                        <WarningCircle size={14} /> {error.title}
+                    </p>
+                    {error.detail && (
+                        <p className="mt-0.5 text-caption text-red-600">{error.detail}</p>
+                    )}
+                    <button
+                        onClick={onRetry}
+                        disabled={isLoading}
+                        className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-caption font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-60"
+                    >
+                        <ArrowClockwise size={12} />
+                        {isLoading ? 'Retrying…' : 'Try again'}
+                    </button>
+                </div>
+            )}
 
             {/* Conversation list */}
             <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
-                {conversations.length === 0 && !isLoading ? (
-                    <p className="p-4 text-sm text-gray-400 text-center">No conversations yet</p>
+                {conversations.length === 0 && !isLoading && !error ? (
+                    <p className="p-4 text-sm text-gray-400 text-center">{emptyText(filter)}</p>
                 ) : (
                     conversations.map((c) => (
                         <button
@@ -65,7 +130,7 @@ export function ConversationList({ onLoadMore }: Props) {
                                 </div>
                                 <div className="flex flex-col items-end ml-2 shrink-0">
                                     <span className="text-[10px] text-gray-400">
-                                        {c.lastMessageTime ? formatTime(c.lastMessageTime) : ''}
+                                        {formatConversationTime(c.lastMessageTime)}
                                     </span>
                                     {(c.unreadCount ?? 0) > 0 && (
                                         <span className="mt-1 bg-green-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
@@ -74,9 +139,44 @@ export function ConversationList({ onLoadMore }: Props) {
                                     )}
                                 </div>
                             </div>
+
+                            {/* State badges: the bot handed over, or a message never landed.
+                                A plain unanswered chat gets no chip — its green unread count says
+                                the same thing, and on the Unanswered tab that would be every row. */}
+                            {(!!c.escalationId || (c.failedCount ?? 0) > 0) && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                    {!!c.escalationId && (
+                                        <span
+                                            title={escalationTitle(c)}
+                                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-px text-caption font-medium text-amber-700"
+                                        >
+                                            <HandWaving size={10} /> Bot handed over
+                                        </span>
+                                    )}
+                                    {(c.failedCount ?? 0) > 0 && (
+                                        <span
+                                            title={`${c.failedCount} message(s) were not delivered`}
+                                            className="inline-flex items-center gap-1 rounded-full bg-red-100 px-1.5 py-px text-caption font-medium text-red-600"
+                                        >
+                                            <WarningCircle size={10} />
+                                            {c.failedCount === 1
+                                                ? 'Not delivered'
+                                                : `${c.failedCount} not delivered`}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
                             <p className="text-xs text-gray-500 mt-1 truncate">
+                                {/* The real state of the last outgoing message. This used to be a
+                                    hard-coded single tick, so a read message and a refused one
+                                    looked identical here. */}
                                 {c.lastMessageType === 'OUTGOING' && (
-                                    <span className="text-green-600">✓ </span>
+                                    <DeliveryTicks
+                                        state={deliveryState(c.lastMessageStatus)}
+                                        size={12}
+                                        className="mr-1"
+                                    />
                                 )}
                                 {c.lastMessage || ''}
                             </p>
@@ -91,19 +191,21 @@ export function ConversationList({ onLoadMore }: Props) {
     );
 }
 
-function formatTime(timestamp: string): string {
-    try {
-        const d = new Date(timestamp);
-        const now = new Date();
-        const isToday = d.toDateString() === now.toDateString();
-        if (isToday) {
-            return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        }
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    } catch {
-        return '';
-    }
+function emptyText(filter: InboxFilter): string {
+    if (filter === 'UNANSWERED') return 'Every conversation has been replied to';
+    if (filter === 'FAILED') return 'Every message was delivered';
+    return 'No conversations yet';
+}
+
+/** Tooltip explaining why the bot stepped aside on this conversation. */
+function escalationTitle(c: InboxConversation): string {
+    const why =
+        c.escalationReason === 'MAX_TURNS'
+            ? 'The conversation reached its automated reply limit'
+            : c.escalationReason === 'AI_ERROR'
+              ? 'The assistant could not generate a reply'
+              : c.escalationReason === 'MANUAL'
+                ? 'Handed over by an admin'
+                : "The assistant didn't have the information to answer";
+    return c.escalationMessage ? `${why}\n\nThey asked: ${c.escalationMessage}` : why;
 }

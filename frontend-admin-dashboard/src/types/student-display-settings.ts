@@ -45,6 +45,9 @@ export type StudentDashboardWidgetId =
     | 'coursesStat'
     | 'evaluationStat'
     | 'continueLearning'
+    // The learner's enrolled courses with per-course progress and a way back
+    // in. Distinct from coursesStat, which is only the count tile.
+    | 'enrolledCourses'
     | 'learningAnalytics'
     | 'liveClasses'
     | 'thisWeekAttendance'
@@ -77,6 +80,7 @@ export const RETIRED_WIDGET_IDS: ReadonlySet<string> = new Set([
 export const WIDGET_LABELS: Record<string, string> = {
     gettingStarted: "Getting Started checklist (“Let's get you started”)",
     continueLearning: 'Continue Learning',
+    enrolledCourses: 'Enrolled Courses (one card per enrolled course)',
     coursesStat: 'Courses (stat card)',
     liveClasses: 'Live Sessions (stat card)',
     evaluationStat: 'Assessments (stat card)',
@@ -132,7 +136,7 @@ export interface StudentSignupSettings {
 }
 
 // UI
-export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay';
+export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay' | 'corporate';
 export interface StudentUiSettings {
     type: StudentUiType;
 }
@@ -402,6 +406,26 @@ export interface StudentLiveClassesSettings {
     showClassMaterials: boolean;
 }
 
+// Periodic "Active Focus Check" shown over video slides in the learner app: the
+// learner must tap a highlighted number to keep watching. The learner app owns
+// the whole behaviour; the admin app only needs to round-trip the block so that
+// saving Student Display settings never drops an institute's opt-out.
+export interface StudentConcentrationSettings {
+    enabled: boolean;
+    frequency: {
+        min_minutes: number;
+        max_minutes: number;
+    };
+    behavior: {
+        allow_skip: boolean;
+        penalty_type: 'pause' | 'flag_only';
+    };
+    appearance: {
+        title: string;
+        subtitle: string;
+    };
+}
+
 // Root schema
 export interface StudentDisplaySettingsData {
     sidebar: {
@@ -427,5 +451,6 @@ export interface StudentDisplaySettingsData {
     };
     liveClasses: StudentLiveClassesSettings;
     tutorials: StudentTutorialSettings;
+    concentration: StudentConcentrationSettings;
     postLoginRedirectRoute: string;
 }

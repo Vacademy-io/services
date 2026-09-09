@@ -261,6 +261,50 @@ def _tag_engine(svc, slug: str, model: str):
         svc._vacademy_engine = (slug, model or "")
     except Exception:
         pass
+    return _apply_speech_term_map(svc)
+
+
+def normalize_for_speech(text: str, term_map=None) -> str:
+    """Deterministic pronunciation fixes for ANY engine. PURE.
+
+    Sibling of normalize_for_rumik, and for the same reason — a prompt rule cannot
+    stop the model writing a word the way it wants to — but not tied to one vendor.
+    Applied to the text sent for synthesis only; transcripts and LLM context keep
+    the written form, so the report still shows what the model actually composed.
+    """
+    if not text:
+        return text
+    mapping = term_map if term_map is not None else get_settings().speech_term_map
+    for src, dst in mapping:
+        if src and src in text:
+            text = text.replace(src, dst)
+    return text
+
+
+def _apply_speech_term_map(svc):
+    """Wrap run_tts so the map applies however the engine synthesises.
+
+    At the ONE point every engine passes through, rather than per vendor: five
+    services with five different internals, and a sixth added later would silently
+    miss out. run_tts receives whole SENTENCES (pipecat aggregates before calling
+    it), so a multi-word key still matches — which it would not if this hooked the
+    token stream further upstream.
+
+    Inert when the map is empty, which is the default, so no existing agent is
+    touched. Never raises: a wrapper failure must not cost the call its voice.
+    """
+    try:
+        if not get_settings().speech_term_map:
+            return svc
+        original = svc.run_tts
+
+        async def run_tts(text, *args, **kwargs):
+            async for frame in original(normalize_for_speech(text), *args, **kwargs):
+                yield frame
+
+        svc.run_tts = run_tts
+    except Exception:
+        pass
     return svc
 
 
@@ -316,7 +360,8 @@ def rumik_term_map_version() -> str:
 
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
               tts_model: str | None = None,
-              pace: float | None = None, temperature: float | None = None):
+              pace: float | None = None, temperature: float | None = None,
+              language: str | None = None):
     """TTS factory. `aiohttp_session` is accepted for call-site compatibility but
     unused on 1.4 (Sarvam's service owns its own websocket).
 
@@ -396,11 +441,20 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                 cand = model.split(":", 1)[1].strip()
                 if cand:
                     sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+            elif model.endswith("_pro") or model.endswith("-pro"):
+                # The engine key stored on an agent is "smallest_pro", not the
+                # "smallest:<model>" form this parser was written for, so the two
+                # conventions never met and a _pro agent silently got the STANDARD
+                # model. Smallest hard-rejects a cross-model voice, so every _pro
+                # voice (mrunal, manasi, ketaki, meher) was being sent somewhere it
+                # does not exist - proven by /preview.mp3 returning 502 for
+                # smallest_pro/mrunal while smallest/devansh returns audio.
+                sm_model = sm_model if sm_model.endswith("_pro") else sm_model + "_pro"
             sm_voice = (voice or s.smallest_voice).strip() or s.smallest_voice
             try:
                 return _tag_engine(
                     _build_smallest(SmallestTTSService, s, sm_model, sm_voice,
-                                    _clamp(eff_pace, 0.5, 2.0)),
+                                    _clamp(eff_pace, 0.5, 2.0), language),
                     "smallest", sm_model)
             except Exception:
                 logger.exception("tts: smallest unavailable — falling back to Sarvam")
@@ -454,7 +508,8 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
-def _build_smallest(cls, s, model: str, voice: str, speed: float):
+def _build_smallest(cls, s, model: str, voice: str, speed: float,
+                    language: str | None = None):
     """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
@@ -463,7 +518,7 @@ def _build_smallest(cls, s, model: str, voice: str, speed: float):
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,
         settings=cls.Settings(model=model, voice=voice,
-                              language=_smallest_language(), speed=speed),
+                              language=_smallest_language(language), speed=speed),
     )
 
 
@@ -478,11 +533,26 @@ def _google_language(tag: str):
         return None
 
 
-def _smallest_language():
-    """Lightning takes a language string; Hindi voices code-switch into English
-    natively, so hi is right for Hinglish agents too."""
+def _smallest_language(agent_language: str | None = None):
+    """Lightning takes a language tag, and it must be the AGENT's, not a constant.
+
+    This used to return HI for every agent. Calls c9aa4062 / e73a839b / 0e26a0c9
+    (2026-09-09, an ENGLISH agent on lightning_v3.1_pro/mrunal): English text
+    tagged `hi` makes the vendor return a ~200 Hz DRONE instead of speech for
+    short interjection openers — measured by replaying the calls' own sentences
+    against the API from the box: "Ah, okay, so you've got some automation in
+    place." came back as 72.5 s of tone, "Perfect." 45.8 s, "Got it." 2.4 s (4 of
+    101 sentences); tagged `en`, 0 of 101. The transport dutifully played the
+    drone (the caller heard a hum), the real sentences queued behind it, and
+    Call Health reported a 15-19 s "agent's audio wasn't ready" stall.
+
+    Hindi/Hinglish agents keep `hi`: those voices code-switch into English
+    natively, so `hi` is right for mixed text."""
     try:
         from pipecat.transcriptions.language import Language
+        raw = (agent_language or "").strip().lower()
+        if raw.startswith("en"):
+            return Language.EN
         return Language.HI
     except Exception:
         return None

@@ -12,6 +12,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { LiveSession } from '../schedule/-services/utils';
+import { useTranslation } from 'react-i18next';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -35,6 +36,8 @@ import { MyTable } from '@/components/design-system/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import DeleteSessionDialog from './delete-session-dialog';
 import { getSessionJoinLink } from '../-utils/live-sesstions';
+import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
+import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
@@ -47,8 +50,10 @@ interface LiveSessionCardProps {
 }
 
 export default function LiveSessionCard({ session, isDraft = false }: LiveSessionCardProps) {
+    const { t: tHelper } = useTranslation('homeworkCreationCreateAssessmentHelper');
     const [openDialog, setOpenDialog] = useState<boolean>(false);
     const [openDeleteDialog, setOpenDeleteDialog] = useState<boolean>(false);
+    const [openUtmDialog, setOpenUtmDialog] = useState<boolean>(false);
     const [selectedTab, setSelectedTab] = useState<string>('Registration');
     const [isRegistrationExporting, setIsRegistrationExporting] = useState<boolean>(false);
     const [isAttendanceExporting, setIsAttendanceExporting] = useState<boolean>(false);
@@ -344,6 +349,15 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                                 >
                                     Edit Live Session
                                 </DropdownMenuItem>
+                                {/* Private sessions hand out an embed link that
+                                    only an already-enrolled learner can open —
+                                    there is no campaign traffic to attribute, so
+                                    the builder is offered on public registration
+                                    links only. */}
+                                <UtmLinkMenuItem
+                                    hidden={session.access_level === 'private' || !joinLink}
+                                    onSelect={() => setOpenUtmDialog(true)}
+                                />
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -417,7 +431,10 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                             buttonType="secondary"
                             className="h-8 min-w-8"
                             onClick={() =>
-                                handleDownloadQRCode(`qr-code-svg-live-session-${session.session_id}`)
+                                handleDownloadQRCode(
+                                    `qr-code-svg-live-session-${session.session_id}`,
+                                    tHelper
+                                )
                             }
                         >
                             <DownloadSimple size={32} />
@@ -429,7 +446,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                 heading="Participant Details"
                 open={openDialog}
                 onOpenChange={(open) => setOpenDialog(open)}
-                className="w-[95vw] max-w-4xl sm:w-[80vw]"
+                className="w-dialog-lg"
             >
                 <div className="flex h-full flex-col gap-3 p-4 text-sm">
                     {/* Registration Count Display */}
@@ -544,7 +561,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                                             error={error as Error | null}
                                             columnWidths={REGISTRATION_WIDTH}
                                             currentPage={0}
-                                            className="!h-[70%] !w-fit"
+                                            className="!h-2/3 !w-fit"
                                         />
                                     </>
                                 )}
@@ -588,7 +605,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                                             error={error as Error | null}
                                             columnWidths={REPORT_WIDTH}
                                             currentPage={0}
-                                            className="!h-[70%] !w-fit"
+                                            className="!h-2/3 !w-fit"
                                         />
                                     </>
                                 )}
@@ -597,6 +614,13 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                     </div>
                 </div>
             </MyDialog>
+            <UtmBuilderDialog
+                open={openUtmDialog}
+                onOpenChange={setOpenUtmDialog}
+                baseUrl={joinLink}
+                sourceType="LIVE_SESSION"
+                entityName={session.title}
+            />
             <DeleteSessionDialog
                 open={openDeleteDialog}
                 onOpenChange={setOpenDeleteDialog}

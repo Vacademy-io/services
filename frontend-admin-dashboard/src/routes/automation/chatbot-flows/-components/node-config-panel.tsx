@@ -1,7 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useChatbotFlowStore } from '../-stores/chatbot-flow-store';
 import { NODE_TYPE_REGISTRY, VariableMapping } from '@/types/chatbot-flow/chatbot-flow-types';
-import { fetchWhatsAppTemplates, WhatsAppTemplateInfo } from '../-services/chatbot-flow-api';
+import {
+    fetchWhatsAppTemplates,
+    fetchChatbotFlowAiUsage,
+    WhatsAppTemplateInfo,
+} from '../-services/chatbot-flow-api';
 import { getInstituteId } from '@/constants/helper';
 import { Plus, Trash, CaretUp, CaretDown } from '@phosphor-icons/react';
 import { VariableMappingEditor } from './VariableMappingEditor';
@@ -699,10 +703,53 @@ function WebhookConfig({ config, onChange }: { config: Record<string, unknown>; 
 }
 
 // ==================== AI RESPONSE ====================
+/**
+ * Every reply this step generates is charged to the institute's AI credits, and the
+ * engine refuses to call the model once they run out — so the author needs to see the
+ * funding state here, next to the step that spends it, not only on the flows list.
+ */
+function AiCreditsNotice() {
+    const [state, setState] = useState<{ enabled: boolean; balance: number | null } | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetchChatbotFlowAiUsage()
+            .then((usage) => {
+                if (!cancelled) setState({ enabled: usage.aiEnabled, balance: usage.currentBalance });
+            })
+            // Unknown funding state renders nothing: a false alarm here would send admins
+            // hunting a billing problem they don't have.
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    if (!state) return null;
+
+    if (!state.enabled) {
+        return (
+            <div className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                <span className="font-medium">Out of AI credits.</span> This step will not call the
+                model — conversations that reach it are handed to a human in the WhatsApp Inbox
+                until the institute tops up.
+            </div>
+        );
+    }
+
+    return (
+        <p className="mb-2 text-xs text-gray-500">
+            Each reply spends AI credits
+            {state.balance != null && <> · balance {state.balance.toFixed(2)}</>}
+        </p>
+    );
+}
+
 function AiResponseConfig({ config, onChange }: { config: Record<string, unknown>; onChange: (keyOrBatch: string | Record<string, unknown>, value?: unknown) => void }) {
     return (
         <>
             <SectionLabel>AI Conversation</SectionLabel>
+            <AiCreditsNotice />
             <FieldLabel>Model</FieldLabel>
             <select value={(config.modelId as string) || 'google/gemini-2.0-flash'} onChange={(e) => onChange('modelId', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded">
                 <option value="google/gemini-2.0-flash">Gemini 2.0 Flash (fast)</option>
@@ -736,6 +783,29 @@ function AiResponseConfig({ config, onChange }: { config: Record<string, unknown
 
             <FieldLabel>Fallback Message (on error/max turns)</FieldLabel>
             <input type="text" value={(config.fallbackMessage as string) || ''} onChange={(e) => onChange('fallbackMessage', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded" placeholder="Let me connect you with a human agent." />
+
+            <SectionLabel>When the AI doesn&rsquo;t know</SectionLabel>
+            <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={config.escalateWhenUnsure !== false} onChange={(e) => onChange('escalateWhenUnsure', e.target.checked)} className="rounded" />
+                <span className="text-sm">Hand over to an admin instead of guessing</span>
+            </label>
+            {config.escalateWhenUnsure !== false && (
+                <>
+                    <FieldLabel>Hand-over Message</FieldLabel>
+                    <textarea
+                        value={(config.escalationMessage as string) || ''}
+                        onChange={(e) => onChange('escalationMessage', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border rounded h-16 resize-y"
+                        placeholder="I don't have that information with me right now. Let me check with our team and get back to you shortly."
+                    />
+                    <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 mt-1">
+                        When the answer isn&rsquo;t in the AI&rsquo;s context it sends this message instead of
+                        inventing one. The conversation is then marked <b>Unanswered</b> in the WhatsApp
+                        Inbox and the people listed under <b>Flow Settings</b> are told a learner is
+                        waiting, by email and/or WhatsApp. Replying from the Inbox clears it.
+                    </div>
+                </>
+            )}
 
             <SectionLabel>Interactive Responses</SectionLabel>
             <label className="flex items-center gap-2 cursor-pointer">

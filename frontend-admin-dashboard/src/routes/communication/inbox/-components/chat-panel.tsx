@@ -1,23 +1,44 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useInboxStore } from '../-stores/inbox-store';
+import type { InboxMessage } from '../-services/inbox-api';
 import { ReplyBox } from './reply-box';
-import { ChatCircle, User, Robot, ArrowUp, ArrowLeft, FileText } from '@phosphor-icons/react';
+import { DeliveryTicks, deliveryState } from './delivery-ticks';
+import { formatMessageTime, groupMessagesByDay } from '../-utils/day-labels';
+import { explainWhatsAppFailure } from '../-utils/whatsapp-errors';
+import {
+    ChatCircle,
+    User,
+    Robot,
+    ArrowUp,
+    ArrowLeft,
+    FileText,
+    HandWaving,
+    WarningCircle,
+    ArrowClockwise,
+} from '@phosphor-icons/react';
 
 interface Props {
     onLoadOlder: () => void;
+    /** Re-run the message load after it failed. */
+    onRetry: () => void;
 }
 
-export function ChatPanel({ onLoadOlder }: Props) {
+export function ChatPanel({ onLoadOlder, onRetry }: Props) {
     const selectedPhone = useInboxStore((s) => s.selectedPhone);
     const selectPhone = useInboxStore((s) => s.selectPhone);
     const messages = useInboxStore((s) => s.messages);
     const conversations = useInboxStore((s) => s.conversations);
     const isLoading = useInboxStore((s) => s.isLoadingMessages);
     const hasMore = useInboxStore((s) => s.hasMoreMessages);
+    const messagesError = useInboxStore((s) => s.messagesError);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     const selectedConvo = conversations.find((c) => c.phone === selectedPhone);
+
+    // Day-by-day runs, so the thread carries "Today" / "Yesterday" / "Monday" separators the way
+    // WhatsApp does instead of leaving every bubble with only a bare clock time.
+    const dayGroups = useMemo(() => groupMessagesByDay(messages), [messages]);
 
     // Auto-scroll to bottom on new messages
     useEffect(() => {
@@ -63,10 +84,50 @@ export function ChatPanel({ onLoadOlder }: Props) {
                 </div>
             </div>
 
+            {/* The chatbot stepped aside on this conversation — say so, and say why, so the
+                admin knows what they are answering before scrolling the thread. Keyed on the
+                escalation itself: awaitingReply is true for any chat the person spoke last on, and
+                this banner has a reason to show only when the bot actually handed over. */}
+            {!!selectedConvo?.escalationId && (
+                <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 shrink-0">
+                    <HandWaving size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div className="min-w-0 text-xs text-amber-800">
+                        <p className="font-medium">Waiting for your reply</p>
+                        <p className="text-amber-700">{escalationReasonText(selectedConvo.escalationReason)}</p>
+                        {selectedConvo.escalationMessage && (
+                            <p className="mt-0.5 italic text-amber-700">
+                                They asked: “{selectedConvo.escalationMessage}”
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Messages area */}
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                {/* A load that failed says so and offers the retry, rather than leaving an empty
+                    thread that reads as "this person never wrote to you". */}
+                {messagesError && (
+                    <div className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-red-700">
+                            <WarningCircle size={14} /> {messagesError.title}
+                        </p>
+                        {messagesError.detail && (
+                            <p className="mt-0.5 text-caption text-red-600">{messagesError.detail}</p>
+                        )}
+                        <button
+                            onClick={onRetry}
+                            disabled={isLoading}
+                            className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-caption font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-60"
+                        >
+                            <ArrowClockwise size={12} />
+                            {isLoading ? 'Retrying…' : 'Try again'}
+                        </button>
+                    </div>
+                )}
+
                 {/* Load older button */}
-                {hasMore && (
+                {hasMore && !messagesError && messages.length > 0 && (
                     <div className="text-center py-2">
                         <button
                             onClick={onLoadOlder}
@@ -79,75 +140,28 @@ export function ChatPanel({ onLoadOlder }: Props) {
                     </div>
                 )}
 
-                {messages.map((msg, i) => (
-                    <div
-                        key={msg.id || i}
-                        className={`flex ${msg.direction === 'OUTGOING' ? 'justify-end' : 'justify-start'}`}
-                    >
-                        <div
-                            className={`max-w-[65%] px-3 py-2 rounded-lg text-sm shadow-sm ${
-                                msg.direction === 'OUTGOING'
-                                    ? 'bg-[#dcf8c6] rounded-tr-none'
-                                    : 'bg-white rounded-tl-none'
-                            }`}
-                        >
-                            {/* Sender label */}
-                            {msg.direction === 'INCOMING' && msg.senderName && (
-                                <p className="text-xs font-medium text-green-700 mb-0.5">{msg.senderName}</p>
-                            )}
-                            {msg.direction === 'OUTGOING' && (
-                                <p className="text-xs font-medium text-blue-600 mb-0.5 flex items-center gap-0.5">
-                                    <Robot size={10} /> Bot
-                                </p>
-                            )}
+                {!isLoading && !messagesError && messages.length === 0 && (
+                    <p className="py-10 text-center text-xs text-gray-500">
+                        No messages in this conversation yet
+                    </p>
+                )}
 
-                            {/* Template header media (image / video / document) actually sent */}
-                            {msg.headerMediaUrl && (
-                                <MessageHeaderMedia
-                                    type={msg.headerType}
-                                    url={msg.headerMediaUrl}
-                                />
-                            )}
+                {dayGroups.map((group) => (
+                    <div key={group.key || 'undated'} className="space-y-2">
+                        {group.label && (
+                            // Deliberately in flow rather than sticky: a floating pill sits on top
+                            // of whatever scrolls under it, and it was covering the middle of a
+                            // message — including the join link in a reminder.
+                            <div className="flex justify-center py-1">
+                                <span className="rounded-full bg-white/90 px-3 py-0.5 text-caption font-medium uppercase tracking-wide text-gray-500 shadow-sm">
+                                    {group.label}
+                                </span>
+                            </div>
+                        )}
 
-                            {/* Message body — the actual template text the recipient received */}
-                            {msg.body && (
-                                <p className="whitespace-pre-wrap break-words text-gray-800">
-                                    {msg.body}
-                                </p>
-                            )}
-
-                            {/* Template context: which template it came from + any send failure */}
-                            {msg.templateName && (
-                                <p className="text-caption text-gray-500 mt-1 flex flex-wrap items-center gap-1">
-                                    <span className="italic">via template “{msg.templateName}”</span>
-                                    {msg.provider && (
-                                        <span className="px-1 py-px rounded bg-black/5 uppercase tracking-wide">
-                                            {msg.provider}
-                                        </span>
-                                    )}
-                                    {msg.deliveryStatus === 'FAILED' && (
-                                        <span className="px-1 py-px rounded bg-red-100 text-red-600 font-medium">
-                                            Failed
-                                        </span>
-                                    )}
-                                </p>
-                            )}
-                            {msg.deliveryStatus === 'FAILED' && msg.error && (
-                                <p className="text-caption text-red-500 mt-0.5 break-words">{msg.error}</p>
-                            )}
-
-                            {/* Timestamp + status */}
-                            <p className={`text-[10px] mt-1 text-right ${
-                                msg.direction === 'OUTGOING' ? 'text-gray-500' : 'text-gray-400'
-                            }`}>
-                                {msg.timestamp ? formatTime(msg.timestamp) : ''}
-                                {msg.direction === 'OUTGOING' && (
-                                    <span className="ml-1">
-                                        {msg.status?.includes('READ') ? '✓✓' : msg.status?.includes('DELIVERED') ? '✓✓' : '✓'}
-                                    </span>
-                                )}
-                            </p>
-                        </div>
+                        {group.messages.map((msg, i) => (
+                            <MessageBubble key={msg.id || `${group.key}-${i}`} msg={msg} />
+                        ))}
                     </div>
                 ))}
 
@@ -160,16 +174,138 @@ export function ChatPanel({ onLoadOlder }: Props) {
     );
 }
 
-function formatTime(timestamp: string): string {
-    try {
-        return new Date(timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    } catch {
-        return '';
+function MessageBubble({ msg }: { msg: InboxMessage }) {
+    const failed = msg.deliveryStatus === 'FAILED';
+    // The provider's verdict, said in words an admin can act on: "Re-engagement message (131047)"
+    // becomes the 24-hour window, and an unrecognised code still shows the provider's exact text.
+    const failure = failed ? explainWhatsAppFailure(msg.error) : null;
+
+    return (
+        <div className={`flex ${msg.direction === 'OUTGOING' ? 'justify-end' : 'justify-start'}`}>
+            <div
+                className={`max-w-[65%] px-3 py-2 rounded-lg text-sm shadow-sm ${
+                    failed
+                        ? 'bg-red-50 border border-red-200 rounded-tr-none'
+                        : msg.direction === 'OUTGOING'
+                          ? 'bg-[#dcf8c6] rounded-tr-none'
+                          : 'bg-white rounded-tl-none'
+                }`}
+            >
+                {/* Sender label */}
+                {msg.direction === 'INCOMING' && msg.senderName && (
+                    <p className="text-xs font-medium text-green-700 mb-0.5">{msg.senderName}</p>
+                )}
+                {msg.direction === 'OUTGOING' && (
+                    <p className="text-xs font-medium text-blue-600 mb-0.5 flex items-center gap-0.5">
+                        <Robot size={10} /> Bot
+                    </p>
+                )}
+
+                {/* Template header media (image / video / document) actually sent */}
+                {msg.headerMediaUrl && (
+                    <MessageHeaderMedia type={msg.headerType} url={msg.headerMediaUrl} />
+                )}
+
+                {/* A free-form attachment sent from this Inbox (not a template header) */}
+                {msg.mediaUrl && (
+                    <MessageHeaderMedia
+                        type={msg.mediaType}
+                        url={msg.mediaUrl}
+                        filename={msg.mediaFilename}
+                    />
+                )}
+
+                {/* Message body — the actual template text the recipient received */}
+                {msg.body && (
+                    <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+                )}
+
+                {/* Template context: which template it came from */}
+                {msg.templateName && (
+                    <p className="text-caption text-gray-500 mt-1 flex flex-wrap items-center gap-1">
+                        <span className="italic">via template “{msg.templateName}”</span>
+                        {msg.provider && (
+                            <span className="px-1 py-px rounded bg-black/5 uppercase tracking-wide">
+                                {msg.provider}
+                            </span>
+                        )}
+                    </p>
+                )}
+
+                {/* Why this one never arrived — one block for every kind of send, so a failure is
+                    explained the same whether it was a template, a reply or an attachment. */}
+                {failed && (
+                    <div className="mt-1 rounded-md bg-red-100/70 px-2 py-1 text-caption text-red-700">
+                        <p className="flex flex-wrap items-center gap-1 font-medium">
+                            <WarningCircle size={11} />
+                            Not delivered
+                            {msg.attemptedType && msg.attemptedType !== 'text' && (
+                                <span className="rounded bg-red-200/70 px-1 py-px uppercase tracking-wide">
+                                    {msg.attemptedType}
+                                </span>
+                            )}
+                        </p>
+                        {failure && (
+                            <p className="mt-0.5 text-red-600">
+                                <span className="font-medium">{failure.title}</span>
+                                {failure.detail ? ` — ${failure.detail}` : ''}
+                            </p>
+                        )}
+                        {failure?.accountLevel && (
+                            <p className="mt-0.5 font-medium text-red-700">
+                                This affects every WhatsApp message from this number, not only this chat.
+                            </p>
+                        )}
+                        {failure?.code && (
+                            <p className="mt-0.5 text-red-400">WhatsApp error code {failure.code}</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Timestamp + status */}
+                <p
+                    className={`text-[10px] mt-1 text-right ${
+                        msg.direction === 'OUTGOING' ? 'text-gray-500' : 'text-gray-400'
+                    }`}
+                >
+                    {formatMessageTime(msg.timestamp)}
+                    {msg.direction === 'OUTGOING' && !failed && (
+                        <DeliveryTicks state={deliveryState(msg.deliveryStatus, msg.status)} />
+                    )}
+                </p>
+            </div>
+        </div>
+    );
+}
+
+/** Plain-language version of why the chatbot handed this conversation over. */
+function escalationReasonText(reason?: string): string {
+    switch (reason) {
+        case 'MAX_TURNS':
+            return 'The conversation reached its automated reply limit.';
+        case 'AI_ERROR':
+            return 'The assistant could not generate a reply.';
+        case 'MANUAL':
+            return 'Handed over by an admin.';
+        default:
+            return "The assistant didn't have the information to answer, so it said it would check with the team.";
     }
 }
 
-/** Renders the template header attachment (image/video/document) actually sent with the message. */
-function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
+/**
+ * Renders an attachment on a message — a template's header media, or a free-form image/video/
+ * audio/document sent from the Inbox. Accepts either casing: template headers are stored upper
+ * case ("IMAGE"), free-form sends lower case ("image").
+ */
+function MessageHeaderMedia({
+    type,
+    url,
+    filename,
+}: {
+    type?: string;
+    url: string;
+    filename?: string;
+}) {
     const t = (type || 'IMAGE').toUpperCase();
 
     if (t === 'VIDEO') {
@@ -182,6 +318,10 @@ function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
         );
     }
 
+    if (t === 'AUDIO') {
+        return <audio src={url} controls className="mb-1.5 w-full" />;
+    }
+
     if (t === 'DOCUMENT') {
         return (
             <a
@@ -190,7 +330,8 @@ function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
                 rel="noopener noreferrer"
                 className="mb-1.5 flex items-center gap-1.5 rounded-md bg-black/5 px-2 py-1.5 text-caption text-blue-600 hover:underline"
             >
-                <FileText size={14} /> View document
+                <FileText size={14} />
+                <span className="truncate">{filename || 'View document'}</span>
             </a>
         );
     }

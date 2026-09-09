@@ -81,6 +81,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
+                        LLM_BRIDGE,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from . import diagnostics as diag_mod
@@ -162,10 +163,14 @@ class TranscriptCollector(FrameProcessor):
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
-                 voice_live=None):
+                 voice_live=None, resay_opening=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
+        # async (text) -> bool. Injected by run_bot: when the reply the caller's
+        # acknowledgment cut was the scripted OPENING and they heard almost none
+        # of it, re-speak the opening instead of asking the model to "carry on".
+        self._resay_opening = resay_opening
         # Acoustic truth: the transport's VAD pushes UserSpeakingFrame every
         # 0.2s while voice is live. The turn-level Started/Stopped frames can
         # lag this by seconds (see CallState.voice_tick_t).
@@ -381,6 +386,17 @@ class TranscriptCollector(FrameProcessor):
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
                     if self._interrupt_on_vad():
+                        # The callee's pickup "Hello" lands INSIDE our opening:
+                        # call 9e566e32 (2026-09-09) said "Hello" 250ms into
+                        # "Hi, is this Shreyash?…", the VAD cut the opening after
+                        # "Hi,", and the cue below — "carry on… do not re-greet"
+                        # — sent the model straight to "Thanks. So the reason I
+                        # called…". The caller never learned who was calling and
+                        # hung up at 11s. Two people who say hello at once do
+                        # not "carry on"; the caller repeats the greeting.
+                        if (self._resay_opening is not None
+                                and await self._resay_opening(text)):
+                            return
                         # The VAD onset already cancelled the reply, and a
                         # cancelled reply cannot be un-cancelled — so ask for the
                         # rest of it instead of leaving the caller in silence
@@ -909,6 +925,12 @@ class NoRepeatGate(FrameProcessor):
         return " ".join(w for w in words if w) in cls._CONTENT_FREE
 
     async def _emit(self, text: str, direction):
+        # The End-branch strips its tail, so without this the assistant
+        # aggregator glues sentences into "…for you.How does that sound?" in
+        # the model's own context — and the model then IMITATES the glued
+        # style in later replies (call c9aa4062, 2026-09-09).
+        if self._emitted and text and not text[0].isspace():
+            text = " " + text
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         topic = question_topic(text)
@@ -988,6 +1010,15 @@ class NoRepeatGate(FrameProcessor):
                 sentence, self._buf = self._buf[:m.end()], self._buf[m.end():]
                 if not sentence.strip():
                     continue
+                # A chunk with no letters or digits ("." from a stray leading
+                # period) is not speech — Smallest TTS reads it as the WORD
+                # "dot". Call c9aa4062: the caller heard "September 10th dot
+                # WHAT time works best" three times and asked "what is dot
+                # H four W?". Never let letterless text reach the TTS.
+                if not any(ch.isalnum() for ch in sentence):
+                    logger.info("no-repeat: dropping letterless chunk %r",
+                                sentence.strip()[:16])
+                    continue
                 if self._emitted == 0:
                     sentence = self._trim_echo(sentence)
                 # We already gave the caller one "you talk" turn and the model is
@@ -1016,6 +1047,9 @@ class NoRepeatGate(FrameProcessor):
         if isinstance(frame, LLMFullResponseEndFrame):
             tail = self._buf.strip()
             self._buf = ""
+            if tail and not any(ch.isalnum() for ch in tail):
+                logger.info("no-repeat: dropping letterless tail %r", tail[:16])
+                tail = ""
             if tail:
                 if self._emitted == 0:
                     tail = self._trim_echo(tail)
@@ -1789,9 +1823,14 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
         return text
     lead_name = context.get("leadName")
     agent_cfg = context.get("agent") or {}
+    # "aap" in an ENGLISH opening ("Hello, am I speaking with aap?") is as broken
+    # as a blank — for English agents an unknown name renders as nothing and the
+    # whitespace cleanup below closes the hole ("Is this ?" -> "Is this?").
+    _is_en = str(agent_cfg.get("language") or "").strip().lower().startswith("en")
+    _name_fallback = "" if _is_en else "aap"
     values = {
-        "lead_name": lead_name or "aap",
-        "name": lead_name or "aap",
+        "lead_name": lead_name or _name_fallback,
+        "name": lead_name or _name_fallback,
         "institute_name": _lead_field(context, "institute", "institute name", "company",
                                       "organisation", "organization") or "aapke institute",
         "lead_source": _lead_field(context, "source", "lead source", "lead_source",
@@ -1864,7 +1903,41 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
                 pass
         return ""
 
-    return _PLACEHOLDER_RE.sub(repl, text)
+    filled = _PLACEHOLDER_RE.sub(repl, text)
+    # An empty substitution leaves grammar debris in SPOKEN text ("Is this ?").
+    # Collapse runs of spaces and pull punctuation back onto the previous word.
+    filled = re.sub(r"[ \t]{2,}", " ", filled)
+    filled = re.sub(r" +([?!,.।;:])", r"\1", filled)
+    return filled
+
+
+def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
+                          heard_ratio: float = 0.5) -> bool:
+    """Was the scripted opening cut before the caller could have taken it in?
+
+    True only while the call is still AT the opening: no LLM reply has started
+    (reply_started_t == 0) and the played transcript holds less than
+    `heard_ratio` of the opening text. A later cut — the caller heard most of
+    it, or a reply has since run — is the ordinary continuation case.
+    Call 9e566e32 (2026-09-09): played "Hi," of a 109-char opening."""
+    if not opening or reply_started_t:
+        return False
+    played = ""
+    for entry in reversed(transcript or []):
+        if entry.get("role") == "assistant":
+            played = entry.get("text") or ""
+            break
+    return len(played) < len(opening) * heard_ratio
+
+
+def _lead_name_is_phone(name) -> bool:
+    """Is this "name" actually a phone number? ("919425677707", "+91 94256 77707")
+    Mostly digits and at least seven of them — a real name never is, and digit-
+    heavy junk ("Lead #4521-A") deserves the same treatment as a bare number."""
+    s = str(name or "")
+    digits = sum(ch.isdigit() for ch in s)
+    visible = sum(not ch.isspace() for ch in s)
+    return digits >= 7 and digits >= 0.7 * visible
 
 
 def _opening_is_substantive(opening: str, min_words: int = 4) -> bool:
@@ -2196,6 +2269,23 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         + " TWO EXCEPTIONS, and only these: read a phone number back once digit by digit, "
         "and read a booked day and time back once. Everything else, never."
     )
+    # Founder, 2026-09-08, after live-testing the yoga agent: "it's asking questions
+    # as if she is my mother. 'Hey, do you take live classes?' is not the right way —
+    # first tell about yourself, soften it, THEN ask." A bare question with no
+    # context reads as an interrogation; the same question cushioned by one clause
+    # of assumption or reason reads as conversation. One clause only — cushions are
+    # exactly the place models balloon a turn.
+    warm_question_rule = (
+        "- ASK LIKE A PERSON, NOT A FORM. Never fire a bare survey question at the caller "
+        "('Do you take live classes?'). Cushion it with ONE short clause first, in one of "
+        "three ways, then ask: a soft everyday assumption ('You'd be running your sessions "
+        "online these days, I suppose — are those live, or recorded?'); the reason you're "
+        "asking ('Just so I only tell you what's relevant — roughly how many members do you "
+        "have?'); or their own last answer ('Since you're sending the link out yourself every "
+        "morning — what happens for someone who joins late?'). ONE clause of cushion, ONE "
+        "question, then stop. Direct is still fine for tiny follow-ups ('And on weekends?')."
+        if get_settings().warm_questions_enabled else ""
+    )
     # Live call went out in the evening but opened 'Good morning' — the authored script
     # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
     # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
@@ -2271,6 +2361,23 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "English, speak plain English only: no Hindi words, no Devanagari."
     )
     lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
+    # Call c9aa4062: the close asked "which number should I send the invite to?",
+    # the caller said "the same number we're talking on", and the agent then made
+    # her DICTATE it digit by digit — a number we dialled ourselves. Give the
+    # model the number so "this same number" is an answer it can act on.
+    _lead_phone = str(context.get("leadPhone") or "").strip()
+    dialled_number_line = (
+        f"- You dialled this call to {_lead_phone}. If they want something sent to "
+        f"'this number' / 'the same number', USE it: confirm it back yourself once, "
+        f"digit by digit without the country code — NEVER ask the caller to dictate "
+        f"a number you already have." if _lead_phone else "")
+    # Same call: the agent ended six turns in ~3 minutes with "Does that make
+    # sense?" / "How does that sound?" — a tic the check-in rule itself invited.
+    check_in_rule = (
+        "- VARY your check-ins: never end two replies in the same call with the same "
+        "check-in phrase ('does that make sense?', 'how does that sound?'). Usually the "
+        "next REAL question is the better turn-ender; with a brisk caller, drop "
+        "check-ins entirely.")
     fields_line = _lead_fields_line(context)
     end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
                 f"append {END_MARKER}.")
@@ -2417,9 +2524,12 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             plain_speech_rule,
             fast_open_rule,
             no_echo_rule,
+            warm_question_rule,
+            check_in_rule,
             one_step_rule,
             goal_drive_rule,
             lead_name_line,
+            dialled_number_line,
             fields_line,
             end_line,
             human_line,
@@ -2451,8 +2561,11 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         plain_speech_rule,
         fast_open_rule,
         no_echo_rule,
+        warm_question_rule,
+        check_in_rule,
         one_step_rule,
         goal_drive_rule,
+        dialled_number_line,
         ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "
          "acknowledge, never use the same word twice in a row."),
         # Scoped to a QUESTION or a CONCERN on purpose. Reflecting one back shows you
@@ -2503,6 +2616,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     _run_bot_t0 = time.time()
     settings = get_settings()
     agent = context.get("agent") or {}
+
+    # Live call c9aa4062 (2026-09-09): the audience list's "name" column held the
+    # PHONE NUMBER, so the scripted opening read twelve digits aloud — "Hello, is
+    # this nine one nine four two five…?". A number is never a person's name:
+    # blank it here, once, so {{name}} falls back, name_sanity_rule applies, and
+    # the report doesn't carry a phone number as customerName either.
+    if _lead_name_is_phone(context.get("leadName")):
+        logger.warning("lead name %r is a phone number — treating as no name corr=%s",
+                       str(context.get("leadName"))[:24], corr)
+        context["leadName"] = None
 
     flags = CallState(t=time.time())
     diag = diag_mod.CallDiagnostics()
@@ -2615,6 +2738,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
     eng_fillers = ("Hmm…",)
+    # Spoken by the watchdog when a reply has been composing with no audio for
+    # LLM_BRIDGE_AFTER_SECS. Not "Hmm" (founder: "too much Hmm-ing") — a plain
+    # human "hang on" that a slow model earns, never a thinking sound.
+    bridge_line = "Just a second." if eng else "एक सेकंड।"
 
     stt_bias = (agent.get("name") or "").strip() or None
     stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias,
@@ -2626,7 +2753,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
                     temperature=_as_float(agent.get("temperature")),
-                    tts_model=_agent_tts_model(agent))
+                    tts_model=_agent_tts_model(agent),
+                    language=agent.get("language"))
     for _svc in (stt, tts):
         if hasattr(_svc, "set_diagnostics"):
             _svc.set_diagnostics(diag)
@@ -2669,7 +2797,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         _opening_for_cache = ""
     _fixed_lines = {
         _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
-        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING,
+        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING, bridge_line,
     }
     _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
     _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
@@ -2788,6 +2916,27 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("duck_absorbs")
         await duck.resume("backchannel" if text is not None else "no_content")
 
+    # ONE re-say per call. If the caller talks over the re-delivered opening
+    # too, the normal continuation path takes it from there — never a loop.
+    _opening_resaid = False
+
+    async def _resay_opening(text) -> bool:
+        nonlocal _opening_resaid
+        if _opening_resaid or diag.greet_path != "scripted":
+            return False
+        if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
+                                     flags["reply_started_t"]):
+            return False
+        _opening_resaid = True
+        diag.bump("opening_resaid")
+        logger.info("greet: caller's %r cut the opening at its start — saying the "
+                    "opening again corr=%s", (text or "")[:20], corr)
+        # append_to_context=False: the context already holds the opening once
+        # (the greet path pre-appends it); this is the AUDIO the caller missed.
+        await task.queue_frames([TTSSpeakFrame(_opening_for_cache,
+                                               append_to_context=False)])
+        return True
+
     def _on_reply_start():
         flags["reply_started_t"] = time.time()
 
@@ -2842,7 +2991,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                          time.time() - flags["voice_tick_t"]
                                          < settings.filler_voice_live_secs),
                                      # late-bound: no_repeat is created below
-                                     on_continuation=lambda: no_repeat.mark_continuation())
+                                     on_continuation=lambda: no_repeat.mark_continuation(),
+                                     resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     no_repeat = NoRepeatGate(
@@ -3192,6 +3342,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             max_deaf_streak=settings.max_deaf_streak,
             duck_no_words_resume_secs=settings.duck_no_words_resume_secs,
             duck_max_hold_secs=settings.duck_max_hold_secs,
+            llm_bridge_after_secs=(settings.llm_bridge_after_secs
+                                   if settings.llm_bridge_after_secs > 0 else _OFF),
         )
         while True:
             await asyncio.sleep(1.0)
@@ -3233,6 +3385,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 await duck.resume("cap_farewell")
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
+                continue
+            if d.kind == LLM_BRIDGE:
+                # Call c130e39f: 16s of silence while Vertex took 5.4s to the
+                # first token and ~8s more to finish the reply. The caller said
+                # "Hello?" three times into it. append_to_context=False: this is
+                # cover for the line, not part of the conversation.
+                diag.bump("llm_bridges")
+                logger.info("llm bridge: reply composing %.1fs with no audio — saying %r "
+                            "corr=%s", d.detail, bridge_line, corr)
+                await task.queue_frames([TTSSpeakFrame(bridge_line, append_to_context=False)])
                 continue
             # Retired branches (idle/orphan/stall/deaf) are disabled by config;
             # reaching one means the sentinel values above were changed — say so.

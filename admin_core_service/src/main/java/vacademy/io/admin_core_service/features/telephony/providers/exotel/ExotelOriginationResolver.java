@@ -47,11 +47,21 @@ public class ExotelOriginationResolver implements OutboundOriginationResolver {
         return ProviderType.EXOTEL;
     }
 
+    /** Shared with the dial-time failure so the pre-flight and the toast match. */
+    private static final String NO_VERIFIED_MOBILE =
+            "Add a verified mobile number in your profile before placing calls";
+
+    @Override
+    public Optional<String> callerBlockedReason(String instituteId, String callerUserId) {
+        return userMobileResolver.findVerifiedMobile(callerUserId).isPresent()
+                ? Optional.empty()
+                : Optional.of(NO_VERIFIED_MOBILE);
+    }
+
     @Override
     public OriginationPlan resolve(OriginationContext ctx) {
         String counsellorPhone = userMobileResolver.findVerifiedMobile(ctx.getCounsellorUserId())
-                .orElseThrow(() -> new VacademyException(
-                        "Add a verified mobile number in your profile before placing calls"));
+                .orElseThrow(() -> new VacademyException(NO_VERIFIED_MOBILE));
 
         List<ProviderNumberView> views = ctx.getAvailable();
         if (views == null || views.isEmpty()) {
