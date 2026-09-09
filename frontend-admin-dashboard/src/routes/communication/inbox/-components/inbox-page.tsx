@@ -7,6 +7,7 @@ import { ConversationList } from './conversation-list';
 import { ChatPanel } from './chat-panel';
 import { describeApiError } from '../-utils/whatsapp-errors';
 import { ArrowClockwise } from '@phosphor-icons/react';
+import { shouldAdoptUrlPhone, urlSearchFor } from '../-utils/inbox-url-sync';
 
 const POLL_INTERVAL = 20000; // 20 seconds
 
@@ -34,25 +35,29 @@ export function InboxPage() {
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // The open conversation and ?phone= are kept in step in both directions, each guarded by an
-    // equality check so they settle instead of bouncing off each other. URL -> store covers the
-    // first paint after a refresh, a pasted link and the browser's back button; store -> URL covers
-    // clicking a row. Replacing rather than pushing keeps a long browsing session from burying the
-    // page the admin arrived from under fifty chat entries.
+    // The open conversation and ?phone= are kept in step in both directions. URL -> store covers
+    // the first paint after a refresh, a pasted link and the browser's back button; store -> URL
+    // covers clicking a row. Replacing rather than pushing keeps a long browsing session from
+    // burying the page the admin arrived from under fifty chat entries.
     const selectedFromUrl = phoneInUrl ?? null;
 
     useEffect(() => {
-        if (selectedFromUrl !== useInboxStore.getState().selectedPhone) {
+        if (shouldAdoptUrlPhone(selectedFromUrl, useInboxStore.getState().selectedPhone)) {
             useInboxStore.getState().selectPhone(selectedFromUrl);
         }
     }, [selectedFromUrl]);
 
     useEffect(() => {
-        if ((selectedPhone ?? null) !== selectedFromUrl) {
-            navigate({
-                search: selectedPhone ? { phone: selectedPhone } : {},
-                replace: true,
-            });
+        // Read the selection from the store, not from this render. The effect above runs first in
+        // the same commit, so after a refresh with ?phone= the store is already correct while this
+        // render's copy is still null — comparing against that stale value cleared the parameter,
+        // which cleared the selection, which put the parameter back, and the chat flickered open
+        // and shut for as long as the page was left alone. selectedPhone stays in the dependency
+        // list because it is what makes this run when a row is clicked.
+        const openPhone = useInboxStore.getState().selectedPhone ?? null;
+        const search = urlSearchFor(openPhone, selectedFromUrl);
+        if (search) {
+            navigate({ search, replace: true });
         }
     }, [selectedPhone, selectedFromUrl, navigate]);
 
