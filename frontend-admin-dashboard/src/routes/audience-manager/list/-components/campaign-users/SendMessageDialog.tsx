@@ -68,6 +68,11 @@ interface SendMessageDialogProps {
     instituteId: string;
     customFields: Array<{ id: string; fieldName: string; fieldKey: string }>;
     leadCount: number;
+    /**
+     * audience_response ids ticked in the lead table. When non-empty the send goes to
+     * exactly these leads; empty/omitted keeps the original whole-audience blast.
+     */
+    selectedResponseIds?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +167,7 @@ export function SendMessageDialog({
     instituteId,
     customFields: customFieldsProp,
     leadCount,
+    selectedResponseIds,
 }: SendMessageDialogProps) {
     const { t } = useTranslation('audienceManagerSendMessageDialog');
     const CHANNELS = useMemo(() => buildChannels(t), [t]);
@@ -224,6 +230,14 @@ export function SendMessageDialog({
     const [resolvedLeadCount, setResolvedLeadCount] = useState<number | null>(
         leadCount > 0 ? leadCount : null
     );
+
+    // A ticked selection wins over the audience total everywhere: the payload, the review
+    // screen and the send button. Previously the dialog ignored the selection entirely and
+    // every send was a whole-audience blast.
+    const hasSelection = (selectedResponseIds?.length ?? 0) > 0;
+    const selectionCount = selectedResponseIds?.length ?? 0;
+    // Recipient count actually being sent to (null = unknown, "all members").
+    const targetCount = hasSelection ? selectionCount : resolvedLeadCount;
 
     // -----------------------------------------------------------------------
     // Reset on close
@@ -484,6 +498,8 @@ export function SendMessageDialog({
                 channel: channel as SendAudienceMessageRequest['channel'],
                 variable_mapping:
                     Object.keys(cleanedMapping).length > 0 ? cleanedMapping : undefined,
+                // Only the ticked rows when there is a selection; omitted = whole audience.
+                response_ids: hasSelection ? selectedResponseIds : undefined,
             };
 
             if (channel === 'WHATSAPP' && selectedTemplate) {
@@ -547,6 +563,8 @@ export function SendMessageDialog({
         pushTitle,
         pushBody,
         campaignId,
+        hasSelection,
+        selectedResponseIds,
     ]);
 
     // -----------------------------------------------------------------------
@@ -1015,9 +1033,11 @@ export function SendMessageDialog({
                             {t('review.recipientsLabel')}
                         </p>
                         <p className="text-sm font-medium">
-                            {resolvedLeadCount !== null
-                                ? t('review.recipientsAllKnown', { count: resolvedLeadCount })
-                                : t('review.recipientsAllUnknown')}
+                            {hasSelection
+                                ? t('review.recipientsSelected', { count: selectionCount })
+                                : resolvedLeadCount !== null
+                                  ? t('review.recipientsAllKnown', { count: resolvedLeadCount })
+                                  : t('review.recipientsAllUnknown')}
                         </p>
                     </div>
 
@@ -1065,8 +1085,8 @@ export function SendMessageDialog({
                     ) : (
                         <>
                             <PaperPlaneTilt className="me-2 h-4 w-4" />
-                            {resolvedLeadCount !== null
-                                ? t('review.sendButtonKnown', { count: resolvedLeadCount })
+                            {targetCount !== null
+                                ? t('review.sendButtonKnown', { count: targetCount })
                                 : t('review.sendButtonUnknown')}
                         </>
                     )}
@@ -1084,7 +1104,9 @@ export function SendMessageDialog({
                 <DialogHeader>
                     <DialogTitle>{t('dialogTitle')}</DialogTitle>
                     <DialogDescription>
-                        {t('dialogDescription', { campaignName })}
+                        {hasSelection
+                            ? t('dialogDescriptionSelected', { count: selectionCount })
+                            : t('dialogDescription', { campaignName })}
                     </DialogDescription>
                 </DialogHeader>
 

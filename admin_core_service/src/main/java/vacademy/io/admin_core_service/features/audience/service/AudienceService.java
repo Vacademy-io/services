@@ -5697,6 +5697,21 @@ public class AudienceService {
             throw new VacademyException("No leads found for audience: " + request.getAudienceId());
         }
 
+        // 2b. Narrow to the rows the caller ticked in the lead table, if any. Filtering the
+        // audience's own ACTIVE list (rather than looking the ids up directly) keeps both
+        // invariants: a response id from another audience or a soft-deleted one can never
+        // be smuggled into a send. No ids supplied → the whole audience, as before.
+        if (!CollectionUtils.isEmpty(request.getResponseIds())) {
+            Set<String> wanted = new HashSet<>(request.getResponseIds());
+            allResponses = allResponses.stream()
+                    .filter(r -> wanted.contains(r.getId()))
+                    .collect(Collectors.toList());
+            if (allResponses.isEmpty()) {
+                throw new VacademyException(
+                        "None of the selected leads belong to audience: " + request.getAudienceId());
+            }
+        }
+
         String channel = request.getChannel();
 
         // Resolve once whether this institute's numbers should default to India
