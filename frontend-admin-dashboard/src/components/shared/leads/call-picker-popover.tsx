@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { fetchCallOptions, type NumberChoice } from './services/call-options';
+import {
+    fetchCallAvailability,
+    fetchCallOptions,
+    type NumberChoice,
+} from './services/call-options';
 
 /**
  * Runtime ExoPhone picker.
@@ -54,6 +58,25 @@ export function CallPickerPopover({
         staleTime: 30 * 1000,
     });
 
+    // Is THIS caller set up to originate? Without this the no-pool copy below
+    // promised "dials from the extension mapped to you" to people who had no
+    // extension mapped, and they only found out from an error toast after
+    // clicking Call now. Same cache key as the Call buttons, so this is normally
+    // already resolved by the time the popover opens.
+    const availabilityQuery = useQuery({
+        queryKey: ['telephony-availability', instituteId],
+        queryFn: () => fetchCallAvailability(instituteId),
+        enabled: open && !!instituteId && !disabled,
+        staleTime: 5 * 60 * 1000,
+        retry: false,
+    });
+    // Absent/failed answer must not block a dial that would otherwise work —
+    // the backend re-checks at dial time and owns the real verdict.
+    const callerNotReady = !!availabilityQuery.data && !availabilityQuery.data.callerReady;
+    const callerBlockedReason = callerNotReady
+        ? availabilityQuery.data?.reason ?? 'Your account is not set up to place calls yet'
+        : null;
+
     const numbers: NumberChoice[] = optionsQuery.data?.numbers ?? [];
     const recommendedId = optionsQuery.data?.recommendedNumberId ?? null;
     // No-pool providers (Airtel) dial from the counsellor's own extension —
@@ -81,6 +104,7 @@ export function CallPickerPopover({
     }, [open]);
 
     const handleConfirm = () => {
+        if (callerBlockedReason) return;
         // Pooled providers require a picked number; no-pool providers dial from
         // the counsellor's extension, so an empty preferredNumberId is correct.
         if (usesNumberPool && !selectedId) return;
@@ -122,7 +146,7 @@ export function CallPickerPopover({
                 </div>
 
                 <div className="max-h-72 overflow-y-auto px-2 py-2">
-                    {optionsQuery.isLoading && (
+                    {(optionsQuery.isLoading || availabilityQuery.isLoading) && (
                         <div className="space-y-2 px-2 py-1">
                             <Skeleton className="h-12 w-full" />
                             <Skeleton className="h-12 w-full" />
@@ -133,22 +157,40 @@ export function CallPickerPopover({
                             Could not load calling numbers. Try again.
                         </p>
                     )}
-                    {!optionsQuery.isLoading && !optionsQuery.isError && !usesNumberPool && (
-                        <div className="px-3 py-2.5">
-                            <p className="text-sm font-medium text-neutral-900">
-                                Calling from your extension
-                            </p>
-                            <p className="mt-1 text-xs text-neutral-500">
-                                {providerLabel
-                                    ? `This call dials through ${providerLabel} from the extension mapped to you.`
-                                    : 'This call dials from the extension mapped to you.'}{' '}
-                                The lead sees your configured caller ID.
-                            </p>
-                        </div>
-                    )}
+                    {!optionsQuery.isLoading &&
+                        !availabilityQuery.isLoading &&
+                        !optionsQuery.isError &&
+                        callerBlockedReason && (
+                            <div className="px-3 py-2.5">
+                                <p className="text-sm font-medium text-neutral-900">
+                                    You cannot place calls yet
+                                </p>
+                                <p className="mt-1 text-xs text-neutral-500">
+                                    {callerBlockedReason}
+                                </p>
+                            </div>
+                        )}
+                    {!optionsQuery.isLoading &&
+                        !availabilityQuery.isLoading &&
+                        !optionsQuery.isError &&
+                        !callerBlockedReason &&
+                        !usesNumberPool && (
+                            <div className="px-3 py-2.5">
+                                <p className="text-sm font-medium text-neutral-900">
+                                    Calling from your extension
+                                </p>
+                                <p className="mt-1 text-xs text-neutral-500">
+                                    {providerLabel
+                                        ? `This call dials through ${providerLabel} from the extension mapped to you.`
+                                        : 'This call dials from the extension mapped to you.'}{' '}
+                                    The lead sees your configured caller ID.
+                                </p>
+                            </div>
+                        )}
                     {usesNumberPool &&
                         !optionsQuery.isLoading &&
                         !optionsQuery.isError &&
+                        !callerBlockedReason &&
                         numbers.length === 0 && (
                             <p className="px-3 py-2 text-xs text-neutral-500">
                                 No calling numbers configured. Ask an admin to set one up under
@@ -156,6 +198,7 @@ export function CallPickerPopover({
                             </p>
                         )}
                     {usesNumberPool &&
+                        !callerBlockedReason &&
                         numbers.map((n) => {
                         const isRecommended = n.id === recommendedId;
                         const isSelected = n.id === selectedId;
@@ -214,7 +257,9 @@ export function CallPickerPopover({
                         onClick={handleConfirm}
                         disabled={
                             optionsQuery.isLoading ||
+                            availabilityQuery.isLoading ||
                             optionsQuery.isError ||
+                            !!callerBlockedReason ||
                             (usesNumberPool && (!selectedId || numbers.length === 0))
                         }
                         className="h-8"

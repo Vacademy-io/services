@@ -214,6 +214,11 @@ export const TELEPHONY_AI_CALL_CAMPAIGN = (audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/ai-call/campaign/${audienceId}`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
+// "Can this person call, and if not why" — always 200, unlike CALL_OPTIONS which
+// throws when the institute has calling off. Used to decide whether a Call button
+// renders at all, on pages that are not about calling.
+export const TELEPHONY_CALL_AVAILABILITY = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/availability?instituteId=${encodeURIComponent(instituteId)}`;
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
 // userId + instituteId are both required — the backend rejects cross-institute lookups.
@@ -299,6 +304,11 @@ export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
 export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
+// Who may be given an extension: this institute's counsellors AND admins.
+// Deliberately not the lead-counsellor picker — an extension is a phone-system
+// fact, so an admin who never touches the CRM still needs one to call a learner.
+export const TELEPHONY_ENDPOINT_ELIGIBLE_USERS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}/eligible-users`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;
