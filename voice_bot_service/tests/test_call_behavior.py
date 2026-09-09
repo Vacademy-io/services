@@ -2710,3 +2710,37 @@ def test_check_in_variation_rule_reaches_both_prompt_branches():
             "name": "A", "systemPrompt": sp, "direction": "OUTBOUND",
             "openingLine": "Hi! I am A."}})
         assert "VARY your check-ins" in p
+
+
+# ── calls c9aa4062 / e73a839b / 0e26a0c9 (2026-09-09): the 15-19 s "audio wasn't
+#    ready" stalls were Smallest returning a ~200 Hz DRONE for English text tagged
+#    `hi` on lightning_v3.1_pro/mrunal (72.5 s for "Ah, okay, so you've got some
+#    automation in place."; 4 of 101 sentences; 0 of 101 tagged `en`) ──────────
+
+
+def test_smallest_language_follows_the_agent_not_a_constant(monkeypatch):
+    import sys, types
+    fake = types.SimpleNamespace(EN="en", HI="hi")
+    mod = sys.modules.get("pipecat.transcriptions.language")
+    if mod is None:
+        mod = types.ModuleType("pipecat.transcriptions.language")
+        sys.modules["pipecat.transcriptions.language"] = mod
+    monkeypatch.setattr(mod, "Language", fake, raising=False)
+    assert pv._smallest_language("english") == "en"
+    assert pv._smallest_language("English") == "en"
+    assert pv._smallest_language("en-IN") == "en"
+    # Hinglish / Hindi / unset keep the code-switching Hindi tag.
+    assert pv._smallest_language("hinglish") == "hi"
+    assert pv._smallest_language("hindi") == "hi"
+    assert pv._smallest_language(None) == "hi"
+    assert pv._smallest_language("") == "hi"
+
+
+def test_build_tts_call_site_passes_the_agent_language():
+    """The factory can only honour the language if run_bot hands it over."""
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    call = src[src.index("tts = build_tts("):]
+    call = call[:call.index(")\n")]
+    assert 'language=agent.get("language")' in call
+    assert "language" in inspect.signature(pv.build_tts).parameters

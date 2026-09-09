@@ -2714,7 +2714,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
                     temperature=_as_float(agent.get("temperature")),
-                    tts_model=_agent_tts_model(agent))
+                    tts_model=_agent_tts_model(agent),
+                    language=agent.get("language"))
     for _svc in (stt, tts):
         if hasattr(_svc, "set_diagnostics"):
             _svc.set_diagnostics(diag)

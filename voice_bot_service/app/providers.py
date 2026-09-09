@@ -360,7 +360,8 @@ def rumik_term_map_version() -> str:
 
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
               tts_model: str | None = None,
-              pace: float | None = None, temperature: float | None = None):
+              pace: float | None = None, temperature: float | None = None,
+              language: str | None = None):
     """TTS factory. `aiohttp_session` is accepted for call-site compatibility but
     unused on 1.4 (Sarvam's service owns its own websocket).
 
@@ -453,7 +454,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
             try:
                 return _tag_engine(
                     _build_smallest(SmallestTTSService, s, sm_model, sm_voice,
-                                    _clamp(eff_pace, 0.5, 2.0)),
+                                    _clamp(eff_pace, 0.5, 2.0), language),
                     "smallest", sm_model)
             except Exception:
                 logger.exception("tts: smallest unavailable — falling back to Sarvam")
@@ -507,7 +508,8 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
     ), "sarvam", s.sarvam_tts_model)
 
 
-def _build_smallest(cls, s, model: str, voice: str, speed: float):
+def _build_smallest(cls, s, model: str, voice: str, speed: float,
+                    language: str | None = None):
     """Construct Smallest.ai Lightning. Split out so build_tts can wrap it in one
     try/except: Lightning takes a REAL numeric speed multiplier (unlike Rumik,
     which only responds to prose), and its voice palettes are per-model — the API
@@ -516,7 +518,7 @@ def _build_smallest(cls, s, model: str, voice: str, speed: float):
         api_key=s.smallest_api_key,
         sample_rate=s.smallest_sample_rate,
         settings=cls.Settings(model=model, voice=voice,
-                              language=_smallest_language(), speed=speed),
+                              language=_smallest_language(language), speed=speed),
     )
 
 
@@ -531,11 +533,26 @@ def _google_language(tag: str):
         return None
 
 
-def _smallest_language():
-    """Lightning takes a language string; Hindi voices code-switch into English
-    natively, so hi is right for Hinglish agents too."""
+def _smallest_language(agent_language: str | None = None):
+    """Lightning takes a language tag, and it must be the AGENT's, not a constant.
+
+    This used to return HI for every agent. Calls c9aa4062 / e73a839b / 0e26a0c9
+    (2026-09-09, an ENGLISH agent on lightning_v3.1_pro/mrunal): English text
+    tagged `hi` makes the vendor return a ~200 Hz DRONE instead of speech for
+    short interjection openers — measured by replaying the calls' own sentences
+    against the API from the box: "Ah, okay, so you've got some automation in
+    place." came back as 72.5 s of tone, "Perfect." 45.8 s, "Got it." 2.4 s (4 of
+    101 sentences); tagged `en`, 0 of 101. The transport dutifully played the
+    drone (the caller heard a hum), the real sentences queued behind it, and
+    Call Health reported a 15-19 s "agent's audio wasn't ready" stall.
+
+    Hindi/Hinglish agents keep `hi`: those voices code-switch into English
+    natively, so `hi` is right for mixed text."""
     try:
         from pipecat.transcriptions.language import Language
+        raw = (agent_language or "").strip().lower()
+        if raw.startswith("en"):
+            return Language.EN
         return Language.HI
     except Exception:
         return None
