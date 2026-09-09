@@ -9,7 +9,8 @@
         "ASSESSMENT": "التقييم",
         "ENROLL_INVITE": "دعوة التسجيل",
         "PRODUCT_PAGE": "صفحة المنتج",
-        "CATALOGUE": "موقع الكتالوج"
+        "CATALOGUE": "موقع الكتالوج",
+        "CUSTOM": "أي صفحة"
     },
     "destination": {
         "label": "الوجهة",

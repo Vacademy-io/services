@@ -9,7 +9,8 @@
         "ASSESSMENT": "assessment",
         "ENROLL_INVITE": "enrolment invite",
         "PRODUCT_PAGE": "product page",
-        "CATALOGUE": "catalogue site"
+        "CATALOGUE": "catalogue site",
+        "CUSTOM": "Any page"
     },
     "destination": {
         "label": "Destination",

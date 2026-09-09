@@ -9,7 +9,8 @@
         "ASSESSMENT": "évaluation",
         "ENROLL_INVITE": "invitation d'inscription",
         "PRODUCT_PAGE": "page produit",
-        "CATALOGUE": "site catalogue"
+        "CATALOGUE": "site catalogue",
+        "CUSTOM": "Page libre"
     },
     "destination": {
         "label": "Destination",

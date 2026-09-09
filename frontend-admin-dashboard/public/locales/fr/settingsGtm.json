@@ -54,6 +54,20 @@
         "requireCampaign": {
             "label": "Exiger un nom de campagne",
             "hint": "Bloque la génération tant que utm_campaign est vide. Une source et un support sans campagne sont la cause habituelle d’un rapport illisible."
+        },
+        "anyPage": {
+            "label": "Créer un lien pour une autre page",
+            "hint": "Les pages de connexion, d'inscription ou d'atterrissage n'ont pas de menu de partage. Choisissez-en une ou saisissez un chemin, puis générez le lien balisé.",
+            "placeholder": "/login",
+            "action": "Générer le lien UTM",
+            "presets": {
+                "login": "Page de connexion",
+                "signup": "Page d'inscription",
+                "home": "Accueil"
+            }
+        },
+        "footer": {
+            "save": "Enregistrer les paramètres de liens"
         }
     }
 }
