@@ -162,10 +162,14 @@ class TranscriptCollector(FrameProcessor):
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
-                 voice_live=None):
+                 voice_live=None, resay_opening=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
+        # async (text) -> bool. Injected by run_bot: when the reply the caller's
+        # acknowledgment cut was the scripted OPENING and they heard almost none
+        # of it, re-speak the opening instead of asking the model to "carry on".
+        self._resay_opening = resay_opening
         # Acoustic truth: the transport's VAD pushes UserSpeakingFrame every
         # 0.2s while voice is live. The turn-level Started/Stopped frames can
         # lag this by seconds (see CallState.voice_tick_t).
@@ -381,6 +385,17 @@ class TranscriptCollector(FrameProcessor):
                         messages=[{"role": "user", "content": text}]), direction)
                     await self._on_absorb(text)
                     if self._interrupt_on_vad():
+                        # The callee's pickup "Hello" lands INSIDE our opening:
+                        # call 9e566e32 (2026-09-09) said "Hello" 250ms into
+                        # "Hi, is this Shreyash?…", the VAD cut the opening after
+                        # "Hi,", and the cue below — "carry on… do not re-greet"
+                        # — sent the model straight to "Thanks. So the reason I
+                        # called…". The caller never learned who was calling and
+                        # hung up at 11s. Two people who say hello at once do
+                        # not "carry on"; the caller repeats the greeting.
+                        if (self._resay_opening is not None
+                                and await self._resay_opening(text)):
+                            return
                         # The VAD onset already cancelled the reply, and a
                         # cancelled reply cannot be un-cancelled — so ask for the
                         # rest of it instead of leaving the caller in silence
@@ -1895,6 +1910,25 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None) -> str:
     return filled
 
 
+def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
+                          heard_ratio: float = 0.5) -> bool:
+    """Was the scripted opening cut before the caller could have taken it in?
+
+    True only while the call is still AT the opening: no LLM reply has started
+    (reply_started_t == 0) and the played transcript holds less than
+    `heard_ratio` of the opening text. A later cut — the caller heard most of
+    it, or a reply has since run — is the ordinary continuation case.
+    Call 9e566e32 (2026-09-09): played "Hi," of a 109-char opening."""
+    if not opening or reply_started_t:
+        return False
+    played = ""
+    for entry in reversed(transcript or []):
+        if entry.get("role") == "assistant":
+            played = entry.get("text") or ""
+            break
+    return len(played) < len(opening) * heard_ratio
+
+
 def _lead_name_is_phone(name) -> bool:
     """Is this "name" actually a phone number? ("919425677707", "+91 94256 77707")
     Mostly digits and at least seven of them — a real name never is, and digit-
@@ -2877,6 +2911,27 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             diag.bump("duck_absorbs")
         await duck.resume("backchannel" if text is not None else "no_content")
 
+    # ONE re-say per call. If the caller talks over the re-delivered opening
+    # too, the normal continuation path takes it from there — never a loop.
+    _opening_resaid = False
+
+    async def _resay_opening(text) -> bool:
+        nonlocal _opening_resaid
+        if _opening_resaid or diag.greet_path != "scripted":
+            return False
+        if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
+                                     flags["reply_started_t"]):
+            return False
+        _opening_resaid = True
+        diag.bump("opening_resaid")
+        logger.info("greet: caller's %r cut the opening at its start — saying the "
+                    "opening again corr=%s", (text or "")[:20], corr)
+        # append_to_context=False: the context already holds the opening once
+        # (the greet path pre-appends it); this is the AUDIO the caller missed.
+        await task.queue_frames([TTSSpeakFrame(_opening_for_cache,
+                                               append_to_context=False)])
+        return True
+
     def _on_reply_start():
         flags["reply_started_t"] = time.time()
 
@@ -2931,7 +2986,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                          time.time() - flags["voice_tick_t"]
                                          < settings.filler_voice_live_secs),
                                      # late-bound: no_repeat is created below
-                                     on_continuation=lambda: no_repeat.mark_continuation())
+                                     on_continuation=lambda: no_repeat.mark_continuation(),
+                                     resay_opening=_resay_opening)
     played_transcript = PlayedTranscriptRecorder(outcome)
 
     no_repeat = NoRepeatGate(

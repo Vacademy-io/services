@@ -2744,3 +2744,75 @@ def test_build_tts_call_site_passes_the_agent_language():
     call = call[:call.index(")\n")]
     assert 'language=agent.get("language")' in call
     assert "language" in inspect.signature(pv.build_tts).parameters
+
+
+# ── call 9e566e32 (2026-09-09): the callee's pickup "Hello" 250ms into our opening
+#    cut it after "Hi,"; the carry-on cue said "do not re-greet" and the model went
+#    straight to "Thanks. So the reason I called…" — caller hung up at 11s ─────────
+
+
+def test_opening_barely_heard_is_only_true_at_the_opening():
+    opening = "Hi, is this Shreyash? Aarushi from Vacademy — we came to know you run yoga sessions. Do you have two minutes?"
+    assert b._opening_barely_heard(opening, [{"role": "assistant", "text": "Hi,"}], 0.0)
+    assert b._opening_barely_heard(opening, [], 0.0)          # nothing recorded at all
+    # Heard most of it: the ordinary continuation path, not a re-say.
+    assert not b._opening_barely_heard(opening, [{"role": "assistant", "text": opening[:90]}], 0.0)
+    # An LLM reply has already run: the opening is history, whatever was played.
+    assert not b._opening_barely_heard(opening, [{"role": "assistant", "text": "Hi,"}], 123.4)
+    assert not b._opening_barely_heard("", [], 0.0)
+
+
+async def _collector_with_resay(rec, resay):
+    tc = b.TranscriptCollector(
+        FakeOutcome(), lambda user=True: None,
+        is_bot_speaking=lambda: True, fillers_armed=lambda: False,
+        bot_stopped_t=lambda: 0.0, gate_enabled=lambda: True,
+        interrupt_on_vad=lambda: True, filler_phrases=[],
+        in_machine_window=lambda: False, reply_in_flight=lambda: False,
+        bot_spoke_once=lambda: True, resay_opening=resay)
+
+    async def _push(frame, direction=None):
+        rec.frames.append(frame)
+    tc.push_frame = _push
+    tc.broadcast_interruption = rec.__dict__.setdefault("_bi", _noop_broadcast)
+    return tc
+
+
+async def _noop_broadcast():
+    return None
+
+
+def _cue_texts(rec):
+    out = []
+    for f in rec.frames:
+        for m in (getattr(f, "messages", None) or []):
+            out.append(str(m.get("content", "")))
+    return out
+
+
+@pytest.mark.asyncio
+async def test_a_hello_that_cuts_the_opening_resays_it_instead_of_carrying_on():
+    rec = _Rec()
+    calls = []
+
+    async def resay(text):
+        calls.append(text)
+        return True
+    tc = await _collector_with_resay(rec, resay)
+    await _feed(tc, "Hello.")
+    assert calls == ["Hello."]
+    cues = _cue_texts(rec)
+    assert "Hello." in cues, "absorb-but-never-lose: the ack still reaches the context"
+    assert not any("carry on" in c or "re-greet" in c for c in cues), cues
+
+
+@pytest.mark.asyncio
+async def test_a_hello_mid_pitch_still_gets_the_carry_on_cue():
+    """resay says 'not the opening' -> today's behaviour, byte for byte."""
+    rec = _Rec()
+
+    async def resay(text):
+        return False
+    tc = await _collector_with_resay(rec, resay)
+    await _feed(tc, "Hello.")
+    assert any("carry on" in c for c in _cue_texts(rec)), _cue_texts(rec)
