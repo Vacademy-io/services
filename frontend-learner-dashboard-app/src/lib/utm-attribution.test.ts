@@ -29,6 +29,7 @@ const setUrl = (search: string) => {
 describe("first-touch capture", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
     setUrl("");
   });
 
@@ -66,6 +67,42 @@ describe("first-touch capture", () => {
     expect(getStoredUtm().utm_campaign).toHaveLength(120);
   });
 
+  it("survives the tab closing — a learner who comes back still carries the campaign", () => {
+    // The bug this fixes: sessionStorage dies with the tab, so someone who
+    // opened the ad link, closed it, and returned later to actually enrol
+    // arrived with no campaign and the ad showed zero conversions.
+    setUrl("?utm_source=meta&utm_campaign=ganesh-2026");
+    captureUtmOnce();
+    sessionStorage.clear(); // new tab
+    setUrl("");             // and the router has stripped the params
+    expect(getStoredUtm()).toEqual({
+      utm_source: "meta",
+      utm_campaign: "ganesh-2026",
+    });
+  });
+
+  it("stops crediting a touch older than the attribution window", () => {
+    setUrl("?utm_source=meta&utm_campaign=old-campaign");
+    captureUtmOnce();
+    const saved = JSON.parse(localStorage.getItem("vac_utm_first_touch")!);
+    saved.at = new Date().getTime() - 31 * 24 * 60 * 60 * 1000; // 31 days ago
+    localStorage.setItem("vac_utm_first_touch", JSON.stringify(saved));
+    sessionStorage.clear();
+    setUrl("");
+    expect(getStoredUtm()).toEqual({});
+  });
+
+  it("prefers the campaign on the CURRENT url over an older stored one", () => {
+    setUrl("?utm_source=meta&utm_campaign=old");
+    captureUtmOnce();
+    setUrl("?utm_source=whatsapp&utm_campaign=new");
+    // Landing on a freshly tagged link credits that link, not the stale one.
+    expect(getStoredUtm()).toEqual({
+      utm_source: "whatsapp",
+      utm_campaign: "new",
+    });
+  });
+
   it("answers empty when storage holds junk", () => {
     sessionStorage.setItem("vac_utm_first_touch", "{not json");
     expect(getStoredUtm()).toEqual({});
@@ -79,6 +116,7 @@ describe("reporting a touch", () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
     setUrl("");
     fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response)) as ReturnType<typeof vi.fn>;
     vi.stubGlobal("fetch", fetchMock);
@@ -119,6 +157,24 @@ describe("reporting a touch", () => {
   });
 
   // An untagged arrival is the absence of attribution, not a data point.
+  it("retires the persisted touch once credited, so a shared device does not inherit it", () => {
+    setUrl("?utm_source=meta&utm_campaign=ganesh-2026");
+    captureUtmOnce();
+    expect(localStorage.getItem("vac_utm_first_touch")).toBeTruthy();
+
+    trackUtmAttribution({
+      instituteId: "inst-1",
+      userId: "user-1",
+      sourceType: "ENROLL_INVITE",
+    });
+    expect(fetchMock).toHaveBeenCalled();
+
+    // Persisted copy gone; the next person on this browser starts clean.
+    expect(localStorage.getItem("vac_utm_first_touch")).toBeNull();
+    // This tab keeps it, so a second enrolment in the same visit still counts.
+    expect(sessionStorage.getItem("vac_utm_first_touch")).toBeTruthy();
+  });
+
   it("sends nothing when this session carries no campaign", () => {
     trackUtmAttribution({
       instituteId: "inst-1",

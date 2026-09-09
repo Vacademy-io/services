@@ -12,9 +12,14 @@ import { BASE_URL } from "@/constants/urls";
  * every other surface had none, which is why an admin could generate a tagged
  * link for an audience form and then find nothing recorded against the lead.
  *
- * The store is sessionStorage, not localStorage, deliberately. Attribution
- * belongs to THIS visit; a campaign click three weeks ago should not be
- * credited with today's organic signup.
+ * STORAGE LIFETIME: sessionStorage alone was too short. It dies with the tab,
+ * so a learner who opened the ad link, closed it, and came back an hour later
+ * to actually enrol arrived with no campaign — the enrolment recorded nothing
+ * and the report showed the ad producing zero. It also dies if they finish in
+ * a different tab. So the touch is ALSO persisted in localStorage with an
+ * explicit expiry: long enough to survive a realistic
+ * think-about-it-and-come-back, short enough that a click three weeks ago is
+ * not credited with today's organic signup.
  */
 
 export const UTM_KEYS = [
@@ -31,6 +36,45 @@ export type UtmValues = Partial<Record<UtmKey, string>>;
 /** Must match every reader — including the catalogue tracker, which delegates here. */
 const UTM_STORE = "vac_utm_first_touch";
 const LANDING_STORE = "vac_utm_landing";
+
+/**
+ * How long a first touch stays creditable, in days. Thirty is the common
+ * default for paid-campaign attribution windows.
+ */
+const PERSIST_DAYS = 30;
+const PERSIST_MS = PERSIST_DAYS * 24 * 60 * 60 * 1000;
+
+/** Never throws: any storage call can fail outright in a locked-down browser. */
+const readStore = (store: "session" | "local", key: string): string | null => {
+  try {
+    return (store === "session" ? sessionStorage : localStorage).getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStore = (store: "session" | "local", key: string, value: string): void => {
+  try {
+    (store === "session" ? sessionStorage : localStorage).setItem(key, value);
+  } catch {
+    /* private mode, quota, or storage disabled — attribution is best-effort */
+  }
+};
+
+/** UTM parameters on the CURRENT url, if any. */
+const utmFromCurrentUrl = (): UtmValues => {
+  const utm: UtmValues = {};
+  try {
+    const params = new URLSearchParams(window.location.search);
+    for (const key of UTM_KEYS) {
+      const value = params.get(key);
+      if (value) utm[key] = value.slice(0, 120);
+    }
+  } catch {
+    /* no window (non-browser context) */
+  }
+  return utm;
+};
 
 /** Mirrors the backend's allow-list; anything else is dropped server-side. */
 export type UtmSourceType =
@@ -51,26 +95,61 @@ export type UtmSourceType =
  * attribution reports come out empty.
  */
 export const captureUtmOnce = (): void => {
-  try {
-    if (sessionStorage.getItem(UTM_STORE)) return;
-    const params = new URLSearchParams(window.location.search);
-    const utm: Record<string, string> = {};
-    for (const key of UTM_KEYS) {
-      const value = params.get(key);
-      if (value) utm[key] = value.slice(0, 120);
+  // Already banked for this tab: first touch wins, nothing to do.
+  if (readStore("session", UTM_STORE)) return;
+
+  const utm = utmFromCurrentUrl();
+  if (Object.keys(utm).length === 0) return;
+
+  const payload = JSON.stringify(utm);
+  // Path only — the query string is where any PII would be.
+  const landing = (() => {
+    try {
+      return window.location.pathname.slice(0, 512);
+    } catch {
+      return "";
     }
-    if (Object.keys(utm).length === 0) return;
-    sessionStorage.setItem(UTM_STORE, JSON.stringify(utm));
-    // Path only — the query string is where any PII would be.
-    sessionStorage.setItem(LANDING_STORE, window.location.pathname.slice(0, 512));
-  } catch {
-    /* storage unavailable (private mode) — attribution is best-effort */
-  }
+  })();
+
+  writeStore("session", UTM_STORE, payload);
+  writeStore("session", LANDING_STORE, landing);
+  // Stamped so it can expire; sessionStorage cannot outlive the tab, and a
+  // learner who comes back later must still carry their campaign.
+  writeStore("local", UTM_STORE, JSON.stringify({ utm, landing, at: nowMs() }));
 };
 
+/** Extracted so tests can control it; Date.now is otherwise inlined. */
+const nowMs = (): number => new Date().getTime();
+
+/**
+ * The campaign to credit, in priority order:
+ *   1. parameters on the URL right now — a tagged link opened in a brand-new
+ *      context, before any capture has run
+ *   2. this tab's first touch
+ *   3. a persisted first touch from an earlier tab, if still inside the window
+ *
+ * Reading the live URL first matters because the router strips utm_* from the
+ * address bar shortly after load; without this, a submit that happens before
+ * capture has been reached would find nothing.
+ */
 export const getStoredUtm = (): UtmValues => {
+  const live = utmFromCurrentUrl();
+  if (Object.keys(live).length > 0) return live;
+
   try {
-    return JSON.parse(sessionStorage.getItem(UTM_STORE) || "{}") as UtmValues;
+    const session = JSON.parse(readStore("session", UTM_STORE) || "{}") as UtmValues;
+    if (Object.keys(session).length > 0) return session;
+  } catch {
+    /* fall through to the persisted copy */
+  }
+
+  try {
+    const raw = readStore("local", UTM_STORE);
+    if (!raw) return {};
+    const saved = JSON.parse(raw) as { utm?: UtmValues; at?: number };
+    if (!saved?.utm || typeof saved.at !== "number") return {};
+    if (nowMs() - saved.at > PERSIST_MS) return {};
+    return saved.utm;
   } catch {
     return {};
   }
@@ -79,8 +158,16 @@ export const getStoredUtm = (): UtmValues => {
 export const hasStoredUtm = (): boolean => Object.keys(getStoredUtm()).length > 0;
 
 const getLandingPath = (): string | undefined => {
+  const session = readStore("session", LANDING_STORE);
+  if (session) return session;
+  // Same fallback as the campaign itself: a learner returning in a new tab
+  // still carries the page they originally landed on.
   try {
-    return sessionStorage.getItem(LANDING_STORE) || undefined;
+    const raw = readStore("local", UTM_STORE);
+    if (!raw) return undefined;
+    const saved = JSON.parse(raw) as { landing?: string; at?: number };
+    if (typeof saved?.at !== "number" || nowMs() - saved.at > PERSIST_MS) return undefined;
+    return saved.landing || undefined;
   } catch {
     return undefined;
   }
@@ -141,6 +228,17 @@ export const trackUtmAttribution = (input: TrackUtmInput): void => {
     }).catch(() => {
       /* attribution is best-effort */
     });
+
+    // The touch has been credited, so retire the PERSISTED copy. Without this
+    // a shared device — a school lab, a family phone, a cyber cafe, all normal
+    // here — would keep crediting the next person's signup to whoever clicked
+    // the ad up to 30 days earlier. The per-tab copy stays, so a learner
+    // enrolling in a second course during the same visit is still attributed.
+    try {
+      localStorage.removeItem(UTM_STORE);
+    } catch {
+      /* storage disabled — nothing to retire */
+    }
   } catch {
     /* never let telemetry break a submission */
   }
