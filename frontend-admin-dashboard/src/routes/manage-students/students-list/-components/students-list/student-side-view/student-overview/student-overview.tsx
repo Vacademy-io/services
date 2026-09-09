@@ -25,6 +25,7 @@ import { getCustomFieldSettingsFromCache } from '@/services/custom-field-setting
 import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
+import { ContactCallButton } from '@/components/shared/telephony/contact-call-button';
 import { EditStudentDetails } from './EditStudentDetails';
 import { EditLeadDetails } from './EditLeadDetails';
 import { StudentAttribution } from '../student-attribution/student-attribution';
@@ -211,6 +212,19 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
     // this keeps working in every locale.
     const COPYABLE_FIELD_KEYS = new Set<string>([OverviewFieldKey.MobileNo, OverviewFieldKey.EmailId]);
 
+    // Click-to-call sits on the learner's OWN mobile row only. The guardian rows
+    // are other people's numbers, and the backend dials the number on the
+    // subject's record — offering a button there would silently dial the wrong
+    // person. The button hides itself when the institute has no calling
+    // configured, so this costs nothing for institutes that don't call.
+    //
+    // This sidebar is shared: Manage Students, the attendance tracker and an
+    // assessment's participants all open it, and so do the lead surfaces. Leads
+    // carry a `_response_id` and are usually not enrolled, so pass it through —
+    // the backend then takes the lead path instead of the learner path.
+    const leadResponseId = (selectedStudent as unknown as Record<string, unknown> | null)
+        ?._response_id as string | undefined;
+
     // Enrolment-derived rows (Course / Level / Session) are intentionally hidden
     // from the Overview tab — they live on the Courses / enrolment surfaces.
     // Matched on the stable field keys so renamed/translated terms still filter.
@@ -284,6 +298,17 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                                                               fieldRow.key
                                                           )
                                                     : undefined
+                                            }
+                                            action={
+                                                fieldRow.key === OverviewFieldKey.MobileNo &&
+                                                !fieldRow.isEmpty ? (
+                                                    <ContactCallButton
+                                                        userId={selectedStudent?.user_id}
+                                                        responseId={leadResponseId}
+                                                        phone={fieldRow.value}
+                                                        name={selectedStudent?.full_name}
+                                                    />
+                                                ) : undefined
                                             }
                                         />
                                     );

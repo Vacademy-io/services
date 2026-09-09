@@ -111,6 +111,7 @@ public class CallOrchestrator {
                 .callerId(p.callerId())
                 .eventsStreamUrl("/admin-core-service/v1/telephony/calls/" + p.callLogId() + "/events")
                 .realtimeEvents(realtimeEvents)
+                .responseId(p.responseId())
                 .build();
     }
 
@@ -218,6 +219,9 @@ public class CallOrchestrator {
             String callLogId,
             String providerType,
             String callerId,
+            /** audience_response the call was filed under — null for a learner
+             *  with no lead row. Echoed to the UI for disposition capture. */
+            String responseId,
             BridgeCallRequest bridge,
             TelephonyConfigCache.Resolved resolved
     ) {

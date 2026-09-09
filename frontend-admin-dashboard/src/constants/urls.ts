@@ -299,6 +299,11 @@ export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
 export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
+// Who may be given an extension: this institute's counsellors AND admins.
+// Deliberately not the lead-counsellor picker — an extension is a phone-system
+// fact, so an admin who never touches the CRM still needs one to call a learner.
+export const TELEPHONY_ENDPOINT_ELIGIBLE_USERS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}/eligible-users`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;

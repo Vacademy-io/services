@@ -644,6 +644,25 @@ public class AuthService {
      * down" and serve a stale value rather than silently flipping RBAC scope.
      */
     public List<String> getActiveUserIdsByRoles(String instituteId, List<String> roles) {
+        return getActiveUsersByRoles(instituteId, roles).stream()
+                .map(vacademy.io.common.auth.dto.UserWithRolesDTO::getId)
+                .filter(id -> id != null && !id.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * Full user records (name / email / mobile / roles) of everyone holding ANY
+     * of the given roles in the institute — the same users-of-status call
+     * {@link #getActiveUserIdsByRoles} makes, without the second round trip
+     * through {@code getUsersFromAuthServiceByUserIds} just to recover names.
+     *
+     * <p>Same STRICT failure contract: throws rather than returning an empty
+     * list, so a caller can tell "no such users" apart from "auth_service is
+     * down".
+     */
+    public List<vacademy.io.common.auth.dto.UserWithRolesDTO> getActiveUsersByRoles(
+            String instituteId, List<String> roles) {
         if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
             return List.of();
         }
@@ -662,13 +681,8 @@ public class AuthService {
             }
             ObjectMapper objectMapper = new ObjectMapper();
             objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-            List<vacademy.io.common.auth.dto.UserWithRolesDTO> users = objectMapper.readValue(response.getBody(),
+            return objectMapper.readValue(response.getBody(),
                     new TypeReference<List<vacademy.io.common.auth.dto.UserWithRolesDTO>>() {});
-            return users.stream()
-                    .map(vacademy.io.common.auth.dto.UserWithRolesDTO::getId)
-                    .filter(id -> id != null && !id.isEmpty())
-                    .distinct()
-                    .toList();
         } catch (VacademyException ve) {
             throw ve;
         } catch (Exception e) {
