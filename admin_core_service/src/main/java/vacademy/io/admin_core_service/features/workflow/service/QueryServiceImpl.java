@@ -327,9 +327,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Default to both so existing workflows keep their audience; a caller that wants
             // only abandoned carts or only failed payments passes the one it means.
-            List<String> statuses = params.get("statuses") instanceof List
-                    ? ((List<?>) params.get("statuses")).stream().map(String::valueOf).toList()
-                    : List.of("PENDING_FOR_PAYMENT", "PAYMENT_FAILED");
+            // An explicitly empty list would expand to "IN ()" and fail as a SQL syntax
+            // error at runtime, so treat empty the same as absent.
+            List<String> statuses = List.of("PENDING_FOR_PAYMENT", "PAYMENT_FAILED");
+            if (params.get("statuses") instanceof List<?> raw && !raw.isEmpty()) {
+                statuses = raw.stream().map(String::valueOf).toList();
+            }
 
             List<Object[]> rows = ssigmRepo.findAbandonedCartPlans(instituteId, statuses, minAgeDays, maxAgeDays);
             List<Map<String, Object>> abandonedList = new ArrayList<>();
