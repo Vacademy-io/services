@@ -645,6 +645,15 @@ public class AuthService {
      */
     public List<String> getActiveUserIdsByRoles(String instituteId, List<String> roles) {
         return getActiveUsersByRoles(instituteId, roles).stream()
+                // Null-element guard: before this method delegated, the mapping ran
+                // INSIDE the try below, so a null row would have surfaced as a
+                // VacademyException like every other failure here. Out here it would
+                // instead escape as a raw NPE and be rendered as a 511 by the generic
+                // RuntimeException handler. Unreachable in practice — auth_service
+                // builds the list with map(UserWithRolesDTO::new), which cannot emit
+                // null — but this path decides RBAC scope, so it does not get to
+                // depend on a remote service's serialiser staying well-behaved.
+                .filter(java.util.Objects::nonNull)
                 .map(vacademy.io.common.auth.dto.UserWithRolesDTO::getId)
                 .filter(id -> id != null && !id.isEmpty())
                 .distinct()
